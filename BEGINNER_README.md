@@ -214,16 +214,13 @@ pytest -q
 python -m bitnet_tools.cli --help
 ```
 
----
+### 2) 모델 실행이 오래 걸림
+- 질문 길이/CSV 크기를 줄이기
+- 먼저 `analyze`만 실행해 payload 생성이 되는지 분리 확인
 
-## L. 자주 나는 오류와 해결
-
-### 1) `analysis error: CSV file not found`
-- 현재 폴더와 파일 경로 확인
-```bash
-pwd
-ls
-```
+### 3) 모델 실행 실패
+- `ollama serve`가 켜져 있는지 확인
+- 모델 태그 오타 확인 (`ollama list`)
 
 ### 2) `bitnet-analyze: command not found`
 - 가상환경 미활성화일 가능성 큼

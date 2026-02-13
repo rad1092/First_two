@@ -141,7 +141,7 @@ jupyter lab
 # 0) 프로젝트 설치
 python -m venv .venv
 source .venv/bin/activate
-pip install -e . --no-build-isolation
+pip install -e .
 
 # 1) Ollama
 curl -fsSL https://ollama.com/install.sh | sh
