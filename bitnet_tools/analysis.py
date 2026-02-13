@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import csv
+import io
 import json
 from pathlib import Path
 from statistics import mean
@@ -80,6 +81,16 @@ def summarize_rows(rows: list[dict[str, str]], columns: list[str]) -> DataSummar
     )
 
 
+def build_prompt(summary: DataSummary, question: str) -> str:
+    return (
+        "너는 BitNet 기반 데이터 분석 보조자야.\n"
+        "아래 데이터 요약을 바탕으로 답변해.\n"
+        "출력 형식: 핵심요약 / 근거 / 한계 / 다음행동\n\n"
+        f"사용자 질문: {question}\n\n"
+        f"데이터 요약(JSON):\n{json.dumps(summary.to_dict(), ensure_ascii=False, indent=2)}"
+    )
+
+
 def build_analysis_payload(csv_path: str | Path, question: str) -> dict[str, Any]:
     path = Path(csv_path)
     if not path.exists():
@@ -94,17 +105,26 @@ def build_analysis_payload(csv_path: str | Path, question: str) -> dict[str, Any
 
     summary = summarize_rows(rows, columns)
 
-    prompt = (
-        "너는 BitNet 기반 데이터 분석 보조자야.\n"
-        "아래 데이터 요약을 바탕으로 답변해.\n"
-        "출력 형식: 핵심요약 / 근거 / 한계 / 다음행동\n\n"
-        f"사용자 질문: {question}\n\n"
-        f"데이터 요약(JSON):\n{json.dumps(summary.to_dict(), ensure_ascii=False, indent=2)}"
-    )
-
     return {
         "csv_path": str(path),
         "question": question,
         "summary": summary.to_dict(),
-        "prompt": prompt,
+        "prompt": build_prompt(summary, question),
+    }
+
+
+def build_analysis_payload_from_csv_text(csv_text: str, question: str) -> dict[str, Any]:
+    reader = csv.DictReader(io.StringIO(csv_text))
+    if reader.fieldnames is None:
+        raise ValueError("CSV header not found")
+
+    columns = [str(c) for c in reader.fieldnames]
+    rows = list(reader)
+    summary = summarize_rows(rows, columns)
+
+    return {
+        "csv_path": "<inline_csv>",
+        "question": question,
+        "summary": summary.to_dict(),
+        "prompt": build_prompt(summary, question),
     }

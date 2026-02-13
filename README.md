@@ -138,6 +138,11 @@ jupyter lab
 ## 6) 지금 바로 실행할 최소 커맨드 모음
 
 ```bash
+# 0) 프로젝트 설치
+python -m venv .venv
+source .venv/bin/activate
+pip install -e . --no-build-isolation
+
 # 1) Ollama
 curl -fsSL https://ollama.com/install.sh | sh
 ollama serve
@@ -145,8 +150,11 @@ ollama serve
 # 2) BitNet pull
 ollama pull <bitnet-model-tag>
 
-# 3) 테스트
-ollama run <bitnet-model-tag> "샘플 매출 데이터를 요약해줘"
+# 3) CSV 분석 payload 생성
+bitnet-analyze analyze sample.csv --question "샘플 매출 데이터를 요약해줘" --out payload.json
+
+# 4) (선택) 웹 UI 실행
+bitnet-analyze ui --host 127.0.0.1 --port 8765
 ```
 
 필요하면 다음 단계에서 환경(OS/CPU/RAM/GPU)에 맞춰

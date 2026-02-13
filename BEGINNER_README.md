@@ -1,52 +1,104 @@
-# 왕초보용 실행 가이드 A to Z (BitNet CSV Analyzer)
+# 왕초보용 실행 가이드 A to Z (VSCode + uv + BitNet CSV Analyzer)
 
-이 문서는 **혼자 쓰는 개인용** 기준으로, 처음부터 끝까지 그대로 따라하면
-`CSV 분석 -> BitNet 실행`이 되는 최소 경로를 안내합니다.
+이 문서는 **완전 처음부터** 기준입니다.
+요청하신 대로 **VSCode에서 폴더 만드는 단계부터**, **uv 가상환경 생성/불러오기**, **터미널에서 먼저 할 것**, **다음 진행 스텝**까지 한 번에 정리했습니다.
 
 ---
 
-## A. 준비물 확인
+## A. 시작 전에 딱 3가지만 확인
 
-1. 운영체제: Linux / macOS / Windows(WSL 가능)
-2. Python 3.10 이상
-3. Ollama 설치 가능 환경
-4. 터미널 사용 가능
+1. VSCode 설치
+2. Git 설치
+3. Python 3.12.12 설치(이미 사용 중이면 그대로 OK)
 
-확인 명령:
+확인 명령(터미널):
 ```bash
 python --version
+git --version
 ```
 
 ---
 
-## B. 저장소 받기
+## B. VSCode에서 작업 폴더 만들기
+
+1) VSCode 실행
+2) 상단 메뉴 `File` → `Open Folder...`
+3) 원하는 위치에 새 폴더 생성 (예: `First_two`)
+4) 그 폴더를 VSCode로 열기
+
+> 이미 저장소가 있으면, 기존 폴더를 열어도 됩니다.
+
+---
+
+## C. VSCode 터미널 먼저 열기 (중요)
+
+1) VSCode에서 `Terminal` → `New Terminal`
+2) 아래 명령으로 현재 위치 확인
 
 ```bash
-git clone <YOUR_REPO_URL>
-cd First_two
+pwd
+```
+
+출력이 프로젝트 폴더(예: `.../First_two`)인지 먼저 확인하세요.
+
+---
+
+## D. 저장소 가져오기(처음 1회)
+
+### 방법 1) 빈 폴더에서 바로 clone
+```bash
+git clone <YOUR_REPO_URL> .
+```
+
+### 방법 2) 이미 clone 되어 있으면
+```bash
+git pull
 ```
 
 ---
 
-## C. 가상환경 만들기
+## E. uv 설치 확인 + 가상환경 만들기
 
+요청하신 uv 기준으로 진행합니다.
+
+1) uv 설치 확인
 ```bash
-python -m venv .venv
+uv --version
+```
+
+2) 가상환경 생성 (`.venv`)
+```bash
+uv venv .venv
+```
+
+3) 가상환경 불러오기(활성화)
+
+Linux/macOS:
+```bash
 source .venv/bin/activate
 ```
 
 Windows PowerShell:
 ```powershell
-python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 ```
 
+4) 정상 활성화 확인
+```bash
+python --version
+which python
+```
+
+> 프롬프트 앞에 `(.venv)`가 보이면 정상입니다.
+
 ---
 
-## D. 패키지 설치
+## F. 패키지 설치 (uv 환경에서)
+
+가상환경이 활성화된 상태에서 실행:
 
 ```bash
-pip install -e .
+uv pip install -e . --no-build-isolation
 ```
 
 설치 확인:
@@ -56,26 +108,58 @@ bitnet-analyze --help
 
 ---
 
-## E. Ollama 준비
+## G. Ollama 준비 (BitNet 실행용)
 
 1) 설치
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
 ```
 
-2) 서버 실행 (별도 터미널)
+2) 서버 실행 (별도 터미널 탭/창)
 ```bash
 ollama serve
 ```
 
-3) BitNet 모델 받기 (예시)
+3) 모델 받기
 ```bash
+ollama pull bitnet:latest
+```
+
+4) 모델 확인
+```bash
+ollama list
+```
+
+---
+
+## H. 가장 먼저 터미널에서 해야 할 최소 순서 (핵심 요약)
+
+아래 순서 그대로 하면 됩니다.
+
+```bash
+# 1) 폴더 확인
+pwd
+
+# 2) uv 가상환경 생성/활성화
+uv venv .venv
+source .venv/bin/activate
+
+# 3) 프로젝트 설치
+uv pip install -e . --no-build-isolation
+
+# 4) CLI 확인
+bitnet-analyze --help
+
+# 5) (별도 터미널) Ollama 서버
+ollama serve
+
+# 6) 모델 다운로드
 ollama pull bitnet:latest
 ```
 
 ---
 
-## F. CLI로 먼저 성공하기 (가장 쉬운 시작)
+## I. CLI로 A to Z 실행 (처음 성공 루트)
 
 1) 샘플 CSV 만들기
 ```bash
@@ -87,7 +171,7 @@ id,amount,category
 CSV
 ```
 
-2) 분석 실행
+2) 분석 payload 만들기
 ```bash
 bitnet-analyze analyze sample.csv --question "핵심 인사이트 3개 알려줘" --out payload.json
 ```
@@ -97,16 +181,16 @@ bitnet-analyze analyze sample.csv --question "핵심 인사이트 3개 알려줘
 cat payload.json
 ```
 
-4) 모델까지 바로 실행(선택)
+4) BitNet까지 바로 실행(선택)
 ```bash
-bitnet-analyze analyze sample.csv --question "핵심 인사이트 3개 알려줘" --model bitnet:latest --timeout 120
+bitnet-analyze analyze sample.csv --question "핵심 인사이트 3개 알려줘" --model bitnet:latest
 ```
 
 ---
 
-## G. 웹 UI로 실행하기 (왕초보 추천)
+## J. 웹 UI로 실행하기 (VSCode 사용자에게 추천)
 
-1) 웹 UI 실행
+1) UI 서버 실행
 ```bash
 bitnet-analyze ui --host 127.0.0.1 --port 8765
 ```
@@ -114,66 +198,89 @@ bitnet-analyze ui --host 127.0.0.1 --port 8765
 2) 브라우저 접속
 - `http://127.0.0.1:8765`
 
-3) 화면에서 순서대로
-- CSV 파일 업로드 또는 붙여넣기
-- 질문 입력(또는 프리셋 버튼)
+3) 화면에서 순서
+- CSV 업로드 또는 붙여넣기
+- 질문 입력
 - `1) 분석`
 - 모델 태그 입력(`bitnet:latest`)
 - `2) BitNet 실행`
 
 ---
 
-## H. 자주 나는 오류와 해결
+## K. 테스트/검증 (문제 생기기 전에 미리)
 
-### 1) `analysis error: CSV file not found`
-- 파일 경로가 잘못됨
-- `pwd`, `ls`로 현재 위치/파일명 다시 확인
-
-### 2) `timeout must be an integer`
-- 웹에서 timeout 칸에 숫자만 입력
-
-### 3) `ollama run timed out`
-- timeout 늘리기(예: 180)
-- 질문 길이/CSV 크기 줄이기
-
-### 4) 모델 실행 실패
-- `ollama serve`가 켜져 있는지 확인
-- 모델 태그 오타 확인 (`ollama list`)
-
----
-
-## I. 실전 사용 팁
-
-- 처음엔 작은 CSV(수백~수천행)로 시작
-- 질문은 짧고 명확하게
-- 응답 품질이 흔들리면:
-  - 질문 단순화
-  - 컬럼 설명을 질문에 같이 넣기
-
----
-
-## J. 업데이트/재실행 루틴
-
-코드 최신 반영:
 ```bash
-git pull
-pip install -e .
-python -m pytest -q
+pytest -q
+python -m bitnet_tools.cli --help
 ```
 
-문제 없으면 다시:
+---
+
+## L. 자주 나는 오류와 해결
+
+### 1) `analysis error: CSV file not found`
+- 현재 폴더와 파일 경로 확인
 ```bash
+pwd
+ls
+```
+
+### 2) `bitnet-analyze: command not found`
+- 가상환경 미활성화일 가능성 큼
+```bash
+source .venv/bin/activate
+```
+- 그리고 재설치
+```bash
+uv pip install -e . --no-build-isolation
+```
+
+### 3) 모델 실행 실패
+- Ollama 서버 상태 확인
+```bash
+ollama list
+```
+- 서버가 꺼져 있으면 다시 실행
+```bash
+ollama serve
+```
+
+### 4) 응답이 너무 느림
+- CSV를 작게
+- 질문을 짧게
+- 먼저 `analyze`만 실행해서 payload 생성 확인
+
+---
+
+## M. 매번 작업 시작 루틴 (실전)
+
+프로젝트 다시 열 때는 보통 이 4개만 하면 됩니다.
+
+```bash
+cd <YOUR_PROJECT_PATH>/First_two
+source .venv/bin/activate
+uv pip install -e . --no-build-isolation
+bitnet-analyze --help
+```
+
+그리고 필요 시:
+```bash
+ollama serve
 bitnet-analyze ui --host 127.0.0.1 --port 8765
 ```
 
 ---
 
-## K. 최소 성공 체크리스트
+## N. A to Z 완료 체크리스트
 
-- [ ] `bitnet-analyze --help` 실행됨
-- [ ] `bitnet-analyze analyze sample.csv ...` 실행됨
-- [ ] `payload.json` 생성됨
-- [ ] `http://127.0.0.1:8765` 접속됨
-- [ ] UI에서 BitNet 응답 받음
+- [ ] VSCode에서 프로젝트 폴더 열기 완료
+- [ ] `uv venv .venv` 완료
+- [ ] `source .venv/bin/activate` 완료
+- [ ] `uv pip install -e . --no-build-isolation` 완료
+- [ ] `bitnet-analyze --help` 확인
+- [ ] `sample.csv` 분석 성공
+- [ ] `payload.json` 생성 확인
+- [ ] `http://127.0.0.1:8765` 접속 확인
+- [ ] UI에서 BitNet 응답 확인
 
-여기까지 되면 A to Z 완료입니다.
+여기까지 되면 진짜 A to Z 끝입니다.
