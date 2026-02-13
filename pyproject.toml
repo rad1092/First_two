@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bitnet-tools"
-version = "0.2.0"
+version = "0.1.0"
 description = "BitNet-first local data analysis helper"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -12,9 +12,6 @@ dependencies = []
 
 [project.scripts]
 bitnet-analyze = "bitnet_tools.cli:main"
-
-[tool.setuptools.package-data]
-bitnet_tools = ["ui/*.html", "ui/*.js", "ui/*.css"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
