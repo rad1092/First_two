@@ -99,7 +99,7 @@ cat payload.json
 
 4) 모델까지 바로 실행(선택)
 ```bash
-bitnet-analyze analyze sample.csv --question "핵심 인사이트 3개 알려줘" --model bitnet:latest --timeout 120
+bitnet-analyze analyze sample.csv --question "핵심 인사이트 3개 알려줘" --model bitnet:latest
 ```
 
 ---
@@ -129,14 +129,11 @@ bitnet-analyze ui --host 127.0.0.1 --port 8765
 - 파일 경로가 잘못됨
 - `pwd`, `ls`로 현재 위치/파일명 다시 확인
 
-### 2) `timeout must be an integer`
-- 웹에서 timeout 칸에 숫자만 입력
+### 2) 모델 실행이 오래 걸림
+- 질문 길이/CSV 크기를 줄이기
+- 먼저 `analyze`만 실행해 payload 생성이 되는지 분리 확인
 
-### 3) `ollama run timed out`
-- timeout 늘리기(예: 180)
-- 질문 길이/CSV 크기 줄이기
-
-### 4) 모델 실행 실패
+### 3) 모델 실행 실패
 - `ollama serve`가 켜져 있는지 확인
 - 모델 태그 오타 확인 (`ollama list`)
 
