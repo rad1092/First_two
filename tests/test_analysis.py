@@ -1,4 +1,8 @@
-from bitnet_tools.analysis import build_analysis_payload, summarize_rows
+from bitnet_tools.analysis import (
+    build_analysis_payload,
+    build_analysis_payload_from_csv_text,
+    summarize_rows,
+)
 
 
 def test_summarize_rows_basic():
@@ -25,3 +29,12 @@ def test_build_analysis_payload(tmp_path):
     assert payload["csv_path"].endswith("sample.csv")
     assert payload["summary"]["row_count"] == 2
     assert "핵심요약 / 근거 / 한계 / 다음행동" in payload["prompt"]
+
+
+def test_build_analysis_payload_from_csv_text():
+    payload = build_analysis_payload_from_csv_text(
+        "x,y\n1,2\n3,4\n", "합계를 설명해줘"
+    )
+
+    assert payload["csv_path"] == "<inline_csv>"
+    assert payload["summary"]["row_count"] == 2
