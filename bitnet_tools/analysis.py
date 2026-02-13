@@ -25,7 +25,6 @@ class DataSummary:
             "dtypes": self.dtypes,
             "missing_counts": self.missing_counts,
             "numeric_stats": self.numeric_stats,
-
         }
 
 
@@ -39,12 +38,10 @@ def _to_float(value: str) -> float | None:
         return None
 
 
-
 def summarize_rows(rows: list[dict[str, str]], columns: list[str]) -> DataSummary:
     missing_counts = {col: 0 for col in columns}
     numeric_values: dict[str, list[float]] = {col: [] for col in columns}
     text_seen: dict[str, bool] = {col: False for col in columns}
-
 
     for row in rows:
         for col in columns:
@@ -52,7 +49,6 @@ def summarize_rows(rows: list[dict[str, str]], columns: list[str]) -> DataSummar
             if raw == "":
                 missing_counts[col] += 1
                 continue
-
             num = _to_float(raw)
             if num is None:
                 text_seen[col] = True
@@ -61,7 +57,6 @@ def summarize_rows(rows: list[dict[str, str]], columns: list[str]) -> DataSummar
 
     dtypes: dict[str, str] = {}
     numeric_stats: dict[str, dict[str, float]] = {}
-
     for col in columns:
         values = numeric_values[col]
         if values and not text_seen[col]:
@@ -70,12 +65,10 @@ def summarize_rows(rows: list[dict[str, str]], columns: list[str]) -> DataSummar
                 "count": float(len(values)),
                 "mean": float(mean(values)),
                 "min": float(min(values)),
-
                 "max": float(max(values)),
             }
         else:
             dtypes[col] = "string"
-
 
     return DataSummary(
         row_count=len(rows),
@@ -84,7 +77,6 @@ def summarize_rows(rows: list[dict[str, str]], columns: list[str]) -> DataSummar
         dtypes=dtypes,
         missing_counts=missing_counts,
         numeric_stats=numeric_stats,
-
     )
 
 
@@ -100,10 +92,19 @@ def build_analysis_payload(csv_path: str | Path, question: str) -> dict[str, Any
         columns = [str(c) for c in reader.fieldnames]
         rows = list(reader)
 
+    summary = summarize_rows(rows, columns)
 
+    prompt = (
+        "너는 BitNet 기반 데이터 분석 보조자야.\n"
+        "아래 데이터 요약을 바탕으로 답변해.\n"
+        "출력 형식: 핵심요약 / 근거 / 한계 / 다음행동\n\n"
+        f"사용자 질문: {question}\n\n"
+        f"데이터 요약(JSON):\n{json.dumps(summary.to_dict(), ensure_ascii=False, indent=2)}"
+    )
 
     return {
         "csv_path": str(path),
         "question": question,
-
+        "summary": summary.to_dict(),
+        "prompt": prompt,
     }
