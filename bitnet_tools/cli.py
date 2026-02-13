@@ -20,6 +20,26 @@ def run_ollama(model: str, prompt: str) -> str:
     return proc.stdout.strip()
 
 
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Build BitNet-focused analysis prompt from a CSV file"
+    )
+    parser.add_argument("csv", type=Path, help="Input CSV path")
+    parser.add_argument("--question", required=True, help="Analysis question")
+    parser.add_argument(
+        "--model",
+        default=None,
+        help="Optional Ollama model tag to run immediately (example: bitnet:latest)",
+    )
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=Path("analysis_payload.json"),
+        help="Where to store generated payload JSON",
+    )
+
+    args = parser.parse_args()
+    payload = build_analysis_payload(args.csv, args.question)
 
     args.out.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"payload saved: {args.out}")
@@ -31,7 +51,6 @@ def run_ollama(model: str, prompt: str) -> str:
         print(answer)
 
     return 0
-
 
 
 if __name__ == "__main__":

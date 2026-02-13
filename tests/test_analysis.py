@@ -1,4 +1,4 @@
-
+from bitnet_tools.analysis import build_analysis_payload, summarize_rows
 
 
 def test_summarize_rows_basic():
@@ -13,7 +13,7 @@ def test_summarize_rows_basic():
     assert summary.column_count == 3
     assert summary.missing_counts["segment"] == 1
     assert "amount" in summary.numeric_stats
-
+    assert summary.dtypes["segment"] == "string"
 
 
 def test_build_analysis_payload(tmp_path):
@@ -25,4 +25,3 @@ def test_build_analysis_payload(tmp_path):
     assert payload["csv_path"].endswith("sample.csv")
     assert payload["summary"]["row_count"] == 2
     assert "핵심요약 / 근거 / 한계 / 다음행동" in payload["prompt"]
-
