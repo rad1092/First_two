@@ -7,35 +7,19 @@ from pathlib import Path
 import subprocess
 from urllib.parse import urlparse
 
-from .analysis import AnalysisError, build_analysis_payload_from_csv_text
+from .analysis import build_analysis_payload_from_csv_text
 
 
 UI_DIR = Path(__file__).parent / "ui"
-MAX_CSV_TEXT_CHARS = 1_000_000
 
 
-def parse_timeout(value: object, minimum: int = 1, maximum: int = 600) -> int:
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("timeout must be an integer") from exc
-    if parsed < minimum or parsed > maximum:
-        raise ValueError(f"timeout must be between {minimum} and {maximum}")
-    return parsed
-
-
-def run_ollama(model: str, prompt: str, timeout_s: int = 120) -> str:
-    try:
-        proc = subprocess.run(
-            ["ollama", "run", model, prompt],
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=timeout_s,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(f"ollama run timed out after {timeout_s}s") from exc
-
+def run_ollama(model: str, prompt: str) -> str:
+    proc = subprocess.run(
+        ["ollama", "run", model, prompt],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     if proc.returncode != 0:
         raise RuntimeError(proc.stderr.strip() or "ollama run failed")
     return proc.stdout.strip()
@@ -86,11 +70,6 @@ class Handler(BaseHTTPRequestHandler):
                 question = str(payload.get("question", "")).strip()
                 if not csv_text.strip():
                     return self._send_json({"error": "csv_text is required"}, HTTPStatus.BAD_REQUEST)
-                if len(csv_text) > MAX_CSV_TEXT_CHARS:
-                    return self._send_json(
-                        {"error": f"csv_text too large (max {MAX_CSV_TEXT_CHARS} chars)"},
-                        HTTPStatus.BAD_REQUEST,
-                    )
                 if not question:
                     question = "이 데이터의 핵심 인사이트를 알려줘"
                 result = build_analysis_payload_from_csv_text(csv_text, question)
@@ -101,15 +80,9 @@ class Handler(BaseHTTPRequestHandler):
                 prompt = str(payload.get("prompt", "")).strip()
                 if not model or not prompt:
                     return self._send_json({"error": "model and prompt are required"}, HTTPStatus.BAD_REQUEST)
-                try:
-                    timeout_s = parse_timeout(payload.get("timeout", 120))
-                except ValueError as exc:
-                    return self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
-                answer = run_ollama(model, prompt, timeout_s=timeout_s)
+                answer = run_ollama(model, prompt)
                 return self._send_json({"answer": answer})
 
-        except AnalysisError as exc:
-            return self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
         except Exception as exc:  # runtime surface for UI
             return self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
 

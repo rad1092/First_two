@@ -52,7 +52,6 @@ pip install -e .
 설치 확인:
 ```bash
 bitnet-analyze --help
-bitnet-analyze doctor
 ```
 
 ---
@@ -76,7 +75,7 @@ ollama pull bitnet:latest
 
 ---
 
-## F. CLI로 먼저 성공하기 (웹 없이, 가장 추천)
+## F. CLI로 먼저 성공하기 (가장 쉬운 시작)
 
 1) 샘플 CSV 만들기
 ```bash
@@ -88,29 +87,24 @@ id,amount,category
 CSV
 ```
 
-2) 초간단 실행(프리셋 질문 자동 사용)
-```bash
-bitnet-analyze quickstart --csv sample.csv --preset insight --out payload.json
-```
-
-3) 또는 질문 직접 지정 실행
+2) 분석 실행
 ```bash
 bitnet-analyze analyze sample.csv --question "핵심 인사이트 3개 알려줘" --out payload.json
 ```
 
-4) 결과 확인
+3) 결과 확인
 ```bash
 cat payload.json
 ```
 
-5) 모델까지 바로 실행(선택)
+4) 모델까지 바로 실행(선택)
 ```bash
 bitnet-analyze analyze sample.csv --question "핵심 인사이트 3개 알려줘" --model bitnet:latest --timeout 120
 ```
 
 ---
 
-## G. 웹 UI로 실행하기 (선택 사항)
+## G. 웹 UI로 실행하기 (왕초보 추천)
 
 1) 웹 UI 실행
 ```bash
@@ -177,7 +171,7 @@ bitnet-analyze ui --host 127.0.0.1 --port 8765
 ## K. 최소 성공 체크리스트
 
 - [ ] `bitnet-analyze --help` 실행됨
-- [ ] `bitnet-analyze quickstart --csv sample.csv --preset insight --out payload.json` 실행됨
+- [ ] `bitnet-analyze analyze sample.csv ...` 실행됨
 - [ ] `payload.json` 생성됨
 - [ ] `http://127.0.0.1:8765` 접속됨
 - [ ] UI에서 BitNet 응답 받음
