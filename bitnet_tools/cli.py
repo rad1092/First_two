@@ -47,12 +47,14 @@ def _build_parser() -> argparse.ArgumentParser:
     ui_parser.add_argument("--host", default="127.0.0.1", help="Bind host")
     ui_parser.add_argument("--port", default=8765, type=int, help="Bind port")
 
+    subparsers.add_parser("desktop", help="Run Windows desktop UI")
+
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     raw_args = list(sys.argv[1:] if argv is None else argv)
-    if raw_args and raw_args[0] not in {"analyze", "ui", "-h", "--help"}:
+    if raw_args and raw_args[0] not in {"analyze", "ui", "desktop", "-h", "--help"}:
         raw_args.insert(0, "analyze")
 
     parser = _build_parser()
@@ -60,6 +62,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "ui":
         serve(host=args.host, port=args.port)
+        return 0
+
+    if args.command == "desktop":
+        from .desktop import launch_desktop
+
+        launch_desktop()
         return 0
 
     if args.command == "analyze":
