@@ -75,3 +75,17 @@ def test_multi_csv_report_builder(tmp_path):
     assert result["file_count"] == 2
     assert "city" in result["shared_columns"]
     assert "다중 CSV 분석 리포트" in report
+
+
+def test_multi_csv_schema_drift_and_group_ratio(tmp_path):
+    p1 = tmp_path / "a.csv"
+    p2 = tmp_path / "b.csv"
+    p1.write_text("city,type,val\nseoul,A,1\nseoul,B,2\n", encoding="utf-8")
+    p2.write_text("city,type,val\nseoul,A,100\nbusan,A,200\n", encoding="utf-8")
+
+    result = analyze_multiple_csv([p1, p2], "드리프트", group_column="city", target_column="type")
+
+    assert "schema_drift" in result
+    assert "val" in result["schema_drift"]
+    assert result["schema_drift"]["val"]["mean_range"] > 0
+    assert result["files"][0]["group_target_ratio"] is not None

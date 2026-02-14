@@ -81,3 +81,33 @@ def test_cli_multi_analyze_mode(tmp_path):
     assert out_json.exists()
     assert out_md.exists()
     assert "다중 CSV 분석 리포트" in out_md.read_text(encoding="utf-8")
+
+
+def test_cli_multi_analyze_with_group_target(tmp_path):
+    p1 = tmp_path / "a.csv"
+    p2 = tmp_path / "b.csv"
+    out_json = tmp_path / "out2.json"
+    out_md = tmp_path / "out2.md"
+
+    p1.write_text("city,type,val\nseoul,A,1\nseoul,B,2\n", encoding="utf-8")
+    p2.write_text("city,type,val\nseoul,A,10\nbusan,A,20\n", encoding="utf-8")
+
+    code = cli.main([
+        "multi-analyze",
+        str(p1),
+        str(p2),
+        "--question",
+        "그룹비율",
+        "--group-column",
+        "city",
+        "--target-column",
+        "type",
+        "--out-json",
+        str(out_json),
+        "--out-report",
+        str(out_md),
+    ])
+
+    assert code == 0
+    body = out_json.read_text(encoding="utf-8")
+    assert "group_target_ratio" in body

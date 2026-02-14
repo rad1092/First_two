@@ -58,6 +58,8 @@ def _build_parser() -> argparse.ArgumentParser:
     multi_parser = subparsers.add_parser("multi-analyze", help="Analyze multiple CSV files together")
     multi_parser.add_argument("csv", nargs="+", type=Path, help="Input CSV paths")
     multi_parser.add_argument("--question", required=True, help="Analysis question")
+    multi_parser.add_argument("--group-column", default=None, help="Optional group column for ratio table")
+    multi_parser.add_argument("--target-column", default=None, help="Optional target column for ratio table")
     multi_parser.add_argument(
         "--out-json",
         type=Path,
@@ -110,7 +112,12 @@ def main(argv: list[str] | None = None) -> int:
 
 
     if args.command == "multi-analyze":
-        result = analyze_multiple_csv(args.csv, args.question)
+        result = analyze_multiple_csv(
+            args.csv,
+            args.question,
+            group_column=args.group_column,
+            target_column=args.target_column,
+        )
         args.out_json.write_text(result_to_json(result), encoding="utf-8")
         args.out_report.write_text(build_multi_csv_markdown(result), encoding="utf-8")
         print(f"multi analysis json saved: {args.out_json}")

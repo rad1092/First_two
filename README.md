@@ -7,7 +7,7 @@
 
 ## 0) 현재 완성도 빠른 진단
 
-현 시점 기준 기능 완성도(실사용 관점): **약 93%**
+현 시점 기준 기능 완성도(실사용 관점): **약 94%**
 
 - 완료
   - CSV 기초 요약(행/열/결측/숫자 통계)
@@ -219,7 +219,7 @@ bitnet-analyze doctor --model bitnet:latest
 bitnet-analyze report sample.csv --question "핵심 요약" --out analysis_report.md
 
 # 8) 다중 CSV 통합 분석(JSON+MD+코드가이드)
-bitnet-analyze multi-analyze a.csv b.csv c.csv --question "컬럼별 비율과 지역별 차이 분석" --out-json multi.json --out-report multi.md
+bitnet-analyze multi-analyze a.csv b.csv c.csv --question "컬럼별 비율과 지역별 차이 분석" --group-column 시도명 --target-column 세차유형 --out-json multi.json --out-report multi.md
 ```
 
 ---
