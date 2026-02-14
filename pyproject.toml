@@ -12,6 +12,7 @@ dependencies = []
 
 [project.scripts]
 bitnet-analyze = "bitnet_tools.cli:main"
+bitnet-desktop = "bitnet_tools.desktop:launch_desktop"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

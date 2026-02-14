@@ -27,3 +27,30 @@ def test_cli_ui_mode(monkeypatch):
 
     assert code == 0
     assert called == {"host": "0.0.0.0", "port": 9999}
+
+
+def test_cli_doctor_mode(monkeypatch, capsys):
+    monkeypatch.setattr(
+        cli,
+        "collect_environment",
+        lambda model=None: {"ollama_installed": True, "model_requested": model},
+    )
+
+    code = cli.main(["doctor", "--model", "bitnet:latest"])
+
+    assert code == 0
+    out = capsys.readouterr().out
+    assert '"ollama_installed": true' in out
+    assert '"model_requested": "bitnet:latest"' in out
+
+
+def test_cli_report_mode(tmp_path):
+    csv_path = tmp_path / "sample.csv"
+    out_path = tmp_path / "report.md"
+    csv_path.write_text("a,b\n1,2\n", encoding="utf-8")
+
+    code = cli.main(["report", str(csv_path), "--question", "요약", "--out", str(out_path)])
+
+    assert code == 0
+    assert out_path.exists()
+    assert "BitNet CSV 분석 보고서" in out_path.read_text(encoding="utf-8")
