@@ -9,6 +9,7 @@ from pathlib import Path
 from .analysis import DataSummary, build_analysis_payload, build_markdown_report
 from .doctor import collect_environment
 from .multi_csv import analyze_multiple_csv, build_multi_csv_markdown, result_to_json
+from .visualize import create_multi_charts
 from .web import serve
 
 
@@ -72,6 +73,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default=Path("multi_analysis_report.md"),
         help="Where to store multi CSV markdown report",
     )
+    multi_parser.add_argument(
+        "--charts-dir",
+        type=Path,
+        default=None,
+        help="Optional directory to save visualization charts",
+    )
 
     report_parser = subparsers.add_parser("report", help="Build markdown summary report from CSV")
     report_parser.add_argument("csv", type=Path, help="Input CSV path")
@@ -118,6 +125,12 @@ def main(argv: list[str] | None = None) -> int:
             group_column=args.group_column,
             target_column=args.target_column,
         )
+        if args.charts_dir is not None:
+            try:
+                result["charts"] = create_multi_charts(args.csv, args.charts_dir)
+            except RuntimeError as exc:
+                result["charts_error"] = str(exc)
+
         args.out_json.write_text(result_to_json(result), encoding="utf-8")
         args.out_report.write_text(build_multi_csv_markdown(result), encoding="utf-8")
         print(f"multi analysis json saved: {args.out_json}")

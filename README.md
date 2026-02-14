@@ -7,7 +7,7 @@
 
 ## 0) 현재 완성도 빠른 진단
 
-현 시점 기준 기능 완성도(실사용 관점): **약 94%**
+현 시점 기준 기능 완성도(실사용 관점): **약 95%**
 
 - 완료
   - CSV 기초 요약(행/열/결측/숫자 통계)
@@ -15,6 +15,7 @@
   - 단일 CSV + 다중 CSV CLI 분석(`report`, `multi-analyze`)
   - 컬럼별 결측/고유/상위값 비율 산출
   - 다중 CSV 분석용 코드 가이드(판다스 예시 코드 자동 생성)
+  - 다중 CSV 자동 시각화 차트 생성(histogram/boxplot/top bar, matplotlib 설치 시)
   - 브라우저 UI(`bitnet-analyze ui`)
   - **윈도우 데스크톱 UI(`bitnet-analyze desktop`, `BitNet_Desktop_Start.bat`)**
 - 남은 과제
@@ -219,7 +220,7 @@ bitnet-analyze doctor --model bitnet:latest
 bitnet-analyze report sample.csv --question "핵심 요약" --out analysis_report.md
 
 # 8) 다중 CSV 통합 분석(JSON+MD+코드가이드)
-bitnet-analyze multi-analyze a.csv b.csv c.csv --question "컬럼별 비율과 지역별 차이 분석" --group-column 시도명 --target-column 세차유형 --out-json multi.json --out-report multi.md
+bitnet-analyze multi-analyze a.csv b.csv c.csv --question "컬럼별 비율과 지역별 차이 분석" --group-column 시도명 --target-column 세차유형 --charts-dir charts --out-json multi.json --out-report multi.md
 ```
 
 ---

@@ -312,6 +312,14 @@ def build_multi_csv_markdown(result: dict[str, Any]) -> str:
             f"| {col} | {drift['dtype_changed']} | {drift['missing_ratio_range']:.4f} | {drift['dominant_value_ratio_range']:.4f} | {drift['mean_range']:.4f} |"
         )
 
+    charts = result.get("charts")
+    if charts:
+        lines.extend(["", "## 생성된 차트 파일", ""])
+        for file_path, chart_paths in charts.items():
+            lines.append(f"- {file_path}")
+            for c in chart_paths:
+                lines.append(f"  - {c}")
+
     lines.extend(
         [
             "",

@@ -111,3 +111,67 @@ def test_cli_multi_analyze_with_group_target(tmp_path):
     assert code == 0
     body = out_json.read_text(encoding="utf-8")
     assert "group_target_ratio" in body
+
+
+def test_cli_multi_analyze_with_charts(tmp_path, monkeypatch):
+    p1 = tmp_path / "a.csv"
+    p2 = tmp_path / "b.csv"
+    out_json = tmp_path / "out3.json"
+    out_md = tmp_path / "out3.md"
+    charts_dir = tmp_path / "charts"
+
+    p1.write_text("city,val\nseoul,1\n", encoding="utf-8")
+    p2.write_text("city,val\nbusan,2\n", encoding="utf-8")
+
+    monkeypatch.setattr(cli, "create_multi_charts", lambda paths, out: {str(paths[0]): ["chart1.png"]})
+
+    code = cli.main([
+        "multi-analyze",
+        str(p1),
+        str(p2),
+        "--question",
+        "차트",
+        "--charts-dir",
+        str(charts_dir),
+        "--out-json",
+        str(out_json),
+        "--out-report",
+        str(out_md),
+    ])
+
+    assert code == 0
+    body = out_json.read_text(encoding="utf-8")
+    assert "charts" in body
+
+
+def test_cli_multi_analyze_chart_error_fallback(tmp_path, monkeypatch):
+    p1 = tmp_path / "a.csv"
+    p2 = tmp_path / "b.csv"
+    out_json = tmp_path / "out4.json"
+    out_md = tmp_path / "out4.md"
+
+    p1.write_text("city,val\nseoul,1\n", encoding="utf-8")
+    p2.write_text("city,val\nbusan,2\n", encoding="utf-8")
+
+    def boom(paths, out):
+        raise RuntimeError("matplotlib is required for chart generation")
+
+    monkeypatch.setattr(cli, "create_multi_charts", boom)
+
+    code = cli.main([
+        "multi-analyze",
+        str(p1),
+        str(p2),
+        "--question",
+        "차트실패",
+        "--charts-dir",
+        str(tmp_path / "charts"),
+        "--out-json",
+        str(out_json),
+        "--out-report",
+        str(out_md),
+    ])
+
+    assert code == 0
+    body = out_json.read_text(encoding="utf-8")
+    assert "charts_error" in body
