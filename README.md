@@ -7,16 +7,18 @@
 
 ## 0) 현재 완성도 빠른 진단
 
-현 시점 기준 기능 완성도(실사용 관점): **약 90%**
+현 시점 기준 기능 완성도(실사용 관점): **약 93%**
 
 - 완료
   - CSV 기초 요약(행/열/결측/숫자 통계)
   - BitNet용 프롬프트 자동 생성
-  - CLI 실행 흐름
+  - 단일 CSV + 다중 CSV CLI 분석(`report`, `multi-analyze`)
+  - 컬럼별 결측/고유/상위값 비율 산출
+  - 다중 CSV 분석용 코드 가이드(판다스 예시 코드 자동 생성)
   - 브라우저 UI(`bitnet-analyze ui`)
   - **윈도우 데스크톱 UI(`bitnet-analyze desktop`, `BitNet_Desktop_Start.bat`)**
 - 남은 과제
-  - 시각화(차트) 자동 생성
+  - 대시보드형 시각화 UI 고도화(필터/드릴다운)
   - 데이터 전처리 규칙(날짜/카테고리 자동 인식) 고도화
 
 ### 파일 붙여넣기 분석 가능 범위
@@ -128,6 +130,7 @@ jupyter lab
 
 데스크톱 UI 내 `환경진단` 버튼으로 Ollama 설치/실행/모델 보유 여부를 즉시 확인할 수 있습니다.
 또한 CSV 파일을 선택하지 않아도 CSV 텍스트를 바로 붙여넣어 분석할 수 있습니다.
+(다중 CSV 동시 분석은 현재 CLI `multi-analyze`에서 먼저 지원합니다.)
 
 ---
 
@@ -214,6 +217,9 @@ bitnet-analyze doctor --model bitnet:latest
 
 # 7) 마크다운 분석 리포트 저장
 bitnet-analyze report sample.csv --question "핵심 요약" --out analysis_report.md
+
+# 8) 다중 CSV 통합 분석(JSON+MD+코드가이드)
+bitnet-analyze multi-analyze a.csv b.csv c.csv --question "컬럼별 비율과 지역별 차이 분석" --out-json multi.json --out-report multi.md
 ```
 
 ---

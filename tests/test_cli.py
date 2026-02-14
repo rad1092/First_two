@@ -54,3 +54,30 @@ def test_cli_report_mode(tmp_path):
     assert code == 0
     assert out_path.exists()
     assert "BitNet CSV 분석 보고서" in out_path.read_text(encoding="utf-8")
+
+
+def test_cli_multi_analyze_mode(tmp_path):
+    p1 = tmp_path / "a.csv"
+    p2 = tmp_path / "b.csv"
+    out_json = tmp_path / "out.json"
+    out_md = tmp_path / "out.md"
+
+    p1.write_text("city,val\nseoul,1\nbusan,2\n", encoding="utf-8")
+    p2.write_text("city,val2\nseoul,10\ndaegu,20\n", encoding="utf-8")
+
+    code = cli.main([
+        "multi-analyze",
+        str(p1),
+        str(p2),
+        "--question",
+        "다중 비교",
+        "--out-json",
+        str(out_json),
+        "--out-report",
+        str(out_md),
+    ])
+
+    assert code == 0
+    assert out_json.exists()
+    assert out_md.exists()
+    assert "다중 CSV 분석 리포트" in out_md.read_text(encoding="utf-8")

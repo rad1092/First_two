@@ -4,6 +4,8 @@ from bitnet_tools.analysis import (
     summarize_rows,
     build_markdown_report,
 )
+from bitnet_tools.multi_csv import analyze_multiple_csv, build_multi_csv_markdown
+
 
 
 def test_summarize_rows_basic():
@@ -59,3 +61,17 @@ def test_build_markdown_report():
     assert "# BitNet CSV 분석 보고서" in report
     assert "| a |" in report
     assert "테스트 질문" in report
+
+
+def test_multi_csv_report_builder(tmp_path):
+    p1 = tmp_path / "a.csv"
+    p2 = tmp_path / "b.csv"
+    p1.write_text("city,v\nseoul,1\n", encoding="utf-8")
+    p2.write_text("city,v2\nseoul,2\n", encoding="utf-8")
+
+    result = analyze_multiple_csv([p1, p2], "비교")
+    report = build_multi_csv_markdown(result)
+
+    assert result["file_count"] == 2
+    assert "city" in result["shared_columns"]
+    assert "다중 CSV 분석 리포트" in report

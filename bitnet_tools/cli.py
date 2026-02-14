@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .analysis import DataSummary, build_analysis_payload, build_markdown_report
 from .doctor import collect_environment
+from .multi_csv import analyze_multiple_csv, build_multi_csv_markdown, result_to_json
 from .web import serve
 
 
@@ -53,6 +54,23 @@ def _build_parser() -> argparse.ArgumentParser:
     doctor_parser = subparsers.add_parser("doctor", help="Run local environment diagnostics")
     doctor_parser.add_argument("--model", default=None, help="Optional model tag to check availability")
 
+
+    multi_parser = subparsers.add_parser("multi-analyze", help="Analyze multiple CSV files together")
+    multi_parser.add_argument("csv", nargs="+", type=Path, help="Input CSV paths")
+    multi_parser.add_argument("--question", required=True, help="Analysis question")
+    multi_parser.add_argument(
+        "--out-json",
+        type=Path,
+        default=Path("multi_analysis.json"),
+        help="Where to store multi CSV analysis JSON",
+    )
+    multi_parser.add_argument(
+        "--out-report",
+        type=Path,
+        default=Path("multi_analysis_report.md"),
+        help="Where to store multi CSV markdown report",
+    )
+
     report_parser = subparsers.add_parser("report", help="Build markdown summary report from CSV")
     report_parser.add_argument("csv", type=Path, help="Input CSV path")
     report_parser.add_argument("--question", required=True, help="Analysis question")
@@ -68,7 +86,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     raw_args = list(sys.argv[1:] if argv is None else argv)
-    if raw_args and raw_args[0] not in {"analyze", "ui", "desktop", "doctor", "report", "-h", "--help"}:
+    if raw_args and raw_args[0] not in {"analyze", "ui", "desktop", "doctor", "report", "multi-analyze", "-h", "--help"}:
         raw_args.insert(0, "analyze")
 
     parser = _build_parser()
@@ -89,6 +107,15 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(report, ensure_ascii=False, indent=2))
         return 0
 
+
+
+    if args.command == "multi-analyze":
+        result = analyze_multiple_csv(args.csv, args.question)
+        args.out_json.write_text(result_to_json(result), encoding="utf-8")
+        args.out_report.write_text(build_multi_csv_markdown(result), encoding="utf-8")
+        print(f"multi analysis json saved: {args.out_json}")
+        print(f"multi analysis report saved: {args.out_report}")
+        return 0
 
     if args.command == "report":
         payload = build_analysis_payload(args.csv, args.question)
