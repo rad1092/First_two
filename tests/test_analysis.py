@@ -89,3 +89,16 @@ def test_multi_csv_schema_drift_and_group_ratio(tmp_path):
     assert "val" in result["schema_drift"]
     assert result["schema_drift"]["val"]["mean_range"] > 0
     assert result["files"][0]["group_target_ratio"] is not None
+
+
+def test_multi_csv_large_row_count(tmp_path):
+    p = tmp_path / "big.csv"
+    lines = ["city,val,type"]
+    for i in range(5000):
+        lines.append(f"seoul,{i % 100},A")
+    p.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    result = analyze_multiple_csv([p], "대용량")
+
+    assert result["total_row_count"] == 5000
+    assert result["files"][0]["summary"]["row_count"] == 5000

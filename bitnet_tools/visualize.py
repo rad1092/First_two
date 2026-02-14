@@ -26,8 +26,10 @@ def _safe_stem(path: Path) -> str:
 def _ensure_matplotlib():
     try:
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
+
         return plt
     except Exception as exc:
         raise RuntimeError("matplotlib is required for chart generation") from exc
@@ -55,12 +57,16 @@ def create_file_charts(
     artifacts: list[str] = []
     stem = _safe_stem(csv_path)
 
+    # template 1: numeric histogram + boxplot
     for col in numeric_cols:
         values = []
+        missing = 0
         for row in rows:
             raw = (row.get(col) or "").strip()
             if raw:
                 values.append(float(raw))
+            else:
+                missing += 1
         if not values:
             continue
 
@@ -85,6 +91,19 @@ def create_file_charts(
         plt.close(fig)
         artifacts.append(str(out))
 
+        # template 2: numeric missing ratio mini chart
+        total = len(values) + missing
+        if total > 0:
+            fig = plt.figure(figsize=(5, 3))
+            plt.bar(["non_missing", "missing"], [len(values), missing])
+            plt.title(f"{stem} - {col} missing overview")
+            plt.tight_layout()
+            out = out_dir / f"{stem}_{col}_missing.png"
+            fig.savefig(out)
+            plt.close(fig)
+            artifacts.append(str(out))
+
+    # template 3: categorical top-value bar
     for col in categorical_cols:
         counter: dict[str, int] = {}
         for row in rows:
@@ -107,6 +126,30 @@ def create_file_charts(
         fig.savefig(out)
         plt.close(fig)
         artifacts.append(str(out))
+
+    # template 4: scatter for first 2 numeric columns
+    if len(numeric_cols) >= 2:
+        x_col, y_col = numeric_cols[0], numeric_cols[1]
+        xs: list[float] = []
+        ys: list[float] = []
+        for row in rows:
+            x_raw = (row.get(x_col) or "").strip()
+            y_raw = (row.get(y_col) or "").strip()
+            if not x_raw or not y_raw:
+                continue
+            xs.append(float(x_raw))
+            ys.append(float(y_raw))
+        if xs and ys:
+            fig = plt.figure(figsize=(6, 5))
+            plt.scatter(xs, ys, alpha=0.6, s=12)
+            plt.title(f"{stem} - {x_col} vs {y_col}")
+            plt.xlabel(x_col)
+            plt.ylabel(y_col)
+            plt.tight_layout()
+            out = out_dir / f"{stem}_{x_col}_{y_col}_scatter.png"
+            fig.savefig(out)
+            plt.close(fig)
+            artifacts.append(str(out))
 
     return artifacts
 

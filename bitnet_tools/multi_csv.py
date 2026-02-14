@@ -3,11 +3,12 @@ from __future__ import annotations
 import csv
 import json
 import math
+import random
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
-from .analysis import _to_float, summarize_reader
+from .analysis import _to_float
 
 
 def _quantile(sorted_values: list[float], q: float) -> float:
@@ -39,14 +40,22 @@ def _outlier_ratio(values: list[float]) -> float:
     return round(outliers / len(sorted_values), 6)
 
 
-def _group_ratio_table(rows: list[dict[str, str]], group_col: str, target_col: str) -> dict[str, Any]:
-    table: dict[str, Counter[str]] = defaultdict(Counter)
-    for row in rows:
-        g = (row.get(group_col) or "").strip()
-        t = (row.get(target_col) or "").strip()
-        if g and t:
-            table[g][t] += 1
+def _reservoir_sample(values: list[float], new_value: float, seen: int, cap: int) -> None:
+    if cap <= 0:
+        return
+    if len(values) < cap:
+        values.append(new_value)
+        return
+    idx = random.randint(0, seen - 1)
+    if idx < cap:
+        values[idx] = new_value
 
+
+def _finalize_group_ratio_table(
+    table: dict[str, Counter[str]],
+    group_col: str,
+    target_col: str,
+) -> dict[str, Any]:
     ratio_table: dict[str, Any] = {}
     for g, counter in table.items():
         total = sum(counter.values())
@@ -65,36 +74,67 @@ def _group_ratio_table(rows: list[dict[str, str]], group_col: str, target_col: s
     }
 
 
-def _profile_rows(
-    rows: list[dict[str, str]],
-    columns: list[str],
+def _profile_csv_stream(
+    path: Path,
     group_column: str | None = None,
     target_column: str | None = None,
+    outlier_sample_cap: int = 20000,
 ) -> dict[str, Any]:
-    row_count = len(rows)
-    missing = {c: 0 for c in columns}
-    non_missing = {c: 0 for c in columns}
-    uniques: dict[str, set[str]] = {c: set() for c in columns}
-    value_counts: dict[str, Counter[str]] = {c: Counter() for c in columns}
+    with path.open("r", encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f)
+        if reader.fieldnames is None:
+            raise ValueError(f"CSV header not found: {path}")
+        columns = [str(c) for c in reader.fieldnames]
 
-    numeric_positive = {c: 0 for c in columns}
-    numeric_zero = {c: 0 for c in columns}
-    numeric_negative = {c: 0 for c in columns}
-    numeric_values: dict[str, list[float]] = {c: [] for c in columns}
+        missing = {c: 0 for c in columns}
+        non_missing = {c: 0 for c in columns}
+        unique_sets: dict[str, set[str]] = {c: set() for c in columns}
+        value_counts: dict[str, Counter[str]] = {c: Counter() for c in columns}
 
-    for row in rows:
-        for col in columns:
-            raw = (row.get(col) or "").strip()
-            if not raw:
-                missing[col] += 1
-                continue
-            non_missing[col] += 1
-            uniques[col].add(raw)
-            value_counts[col][raw] += 1
+        numeric_positive = {c: 0 for c in columns}
+        numeric_zero = {c: 0 for c in columns}
+        numeric_negative = {c: 0 for c in columns}
+        numeric_counts = {c: 0 for c in columns}
+        numeric_sums = {c: 0.0 for c in columns}
+        numeric_mins: dict[str, float] = {}
+        numeric_maxs: dict[str, float] = {}
+        text_seen = {c: False for c in columns}
 
-            num = _to_float(raw)
-            if num is not None:
-                numeric_values[col].append(num)
+        numeric_outlier_samples: dict[str, list[float]] = {c: [] for c in columns}
+
+        group_target_counter: dict[str, Counter[str]] = defaultdict(Counter)
+        row_count = 0
+
+        for row in reader:
+            row_count += 1
+            if group_column and target_column and group_column in columns and target_column in columns:
+                g = (row.get(group_column) or "").strip()
+                t = (row.get(target_column) or "").strip()
+                if g and t:
+                    group_target_counter[g][t] += 1
+
+            for col in columns:
+                raw = (row.get(col) or "").strip()
+                if raw == "":
+                    missing[col] += 1
+                    continue
+
+                non_missing[col] += 1
+                unique_sets[col].add(raw)
+                value_counts[col][raw] += 1
+
+                num = _to_float(raw)
+                if num is None:
+                    text_seen[col] = True
+                    continue
+
+                numeric_counts[col] += 1
+                numeric_sums[col] += num
+                if col not in numeric_mins or num < numeric_mins[col]:
+                    numeric_mins[col] = num
+                if col not in numeric_maxs or num > numeric_maxs[col]:
+                    numeric_maxs[col] = num
+
                 if num > 0:
                     numeric_positive[col] += 1
                 elif num < 0:
@@ -102,9 +142,30 @@ def _profile_rows(
                 else:
                     numeric_zero[col] += 1
 
-    summary = summarize_reader(rows, columns)
+                _reservoir_sample(
+                    numeric_outlier_samples[col],
+                    num,
+                    numeric_counts[col],
+                    outlier_sample_cap,
+                )
+
+    dtypes: dict[str, str] = {}
+    numeric_stats: dict[str, dict[str, float]] = {}
     profiles: dict[str, Any] = {}
+
     for col in columns:
+        count = numeric_counts[col]
+        if count > 0 and not text_seen[col]:
+            dtypes[col] = "float"
+            numeric_stats[col] = {
+                "count": float(count),
+                "mean": float(numeric_sums[col] / count),
+                "min": float(numeric_mins[col]),
+                "max": float(numeric_maxs[col]),
+            }
+        else:
+            dtypes[col] = "string"
+
         nn = non_missing[col]
         top = value_counts[col].most_common(5)
         top_values = [
@@ -123,7 +184,7 @@ def _profile_rows(
                 "positive_ratio": round(numeric_positive[col] / numeric_total, 6),
                 "zero_ratio": round(numeric_zero[col] / numeric_total, 6),
                 "negative_ratio": round(numeric_negative[col] / numeric_total, 6),
-                "outlier_ratio": _outlier_ratio(numeric_values[col]),
+                "outlier_ratio": _outlier_ratio(numeric_outlier_samples[col]),
             }
 
         dominant_value_ratio = top_values[0]["ratio"] if top_values else 0.0
@@ -131,20 +192,33 @@ def _profile_rows(
             "missing_count": missing[col],
             "missing_ratio": round(missing[col] / row_count, 6) if row_count else 0.0,
             "non_missing_count": nn,
-            "unique_count": len(uniques[col]),
-            "unique_ratio": round(len(uniques[col]) / nn, 6) if nn else 0.0,
+            "unique_count": len(unique_sets[col]),
+            "unique_ratio": round(len(unique_sets[col]) / nn, 6) if nn else 0.0,
             "dominant_value_ratio": dominant_value_ratio,
             "top_values": top_values,
             "numeric_distribution": numeric_distribution,
-            "dtype": summary.dtypes[col],
+            "dtype": dtypes[col],
         }
+
+    summary = {
+        "row_count": row_count,
+        "column_count": len(columns),
+        "columns": columns,
+        "dtypes": dtypes,
+        "missing_counts": missing,
+        "numeric_stats": numeric_stats,
+    }
 
     group_target_ratio: dict[str, Any] | None = None
     if group_column and target_column and group_column in columns and target_column in columns:
-        group_target_ratio = _group_ratio_table(rows, group_column, target_column)
+        group_target_ratio = _finalize_group_ratio_table(
+            group_target_counter,
+            group_column,
+            target_column,
+        )
 
     return {
-        "summary": summary.to_dict(),
+        "summary": summary,
         "column_profiles": profiles,
         "group_target_ratio": group_target_ratio,
     }
@@ -189,16 +263,13 @@ def analyze_multiple_csv(
         if not path.exists():
             raise FileNotFoundError(f"CSV file not found: {path}")
 
-        with path.open("r", encoding="utf-8-sig", newline="") as f:
-            reader = csv.DictReader(f)
-            if reader.fieldnames is None:
-                raise ValueError(f"CSV header not found: {path}")
-            columns = [str(c) for c in reader.fieldnames]
-            rows = list(reader)
-
-        profiled = _profile_rows(rows, columns, group_column=group_column, target_column=target_column)
+        profiled = _profile_csv_stream(
+            path,
+            group_column=group_column,
+            target_column=target_column,
+        )
         total_rows += profiled["summary"]["row_count"]
-        all_columns.append(set(columns))
+        all_columns.append(set(profiled["summary"]["columns"]))
 
         files.append(
             {

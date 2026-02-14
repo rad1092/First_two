@@ -7,7 +7,7 @@
 
 ## 0) 현재 완성도 빠른 진단
 
-현 시점 기준 기능 완성도(실사용 관점): **약 95%**
+현 시점 기준 기능 완성도(실사용 관점): **약 96%**
 
 - 완료
   - CSV 기초 요약(행/열/결측/숫자 통계)
@@ -15,12 +15,18 @@
   - 단일 CSV + 다중 CSV CLI 분석(`report`, `multi-analyze`)
   - 컬럼별 결측/고유/상위값 비율 산출
   - 다중 CSV 분석용 코드 가이드(판다스 예시 코드 자동 생성)
-  - 다중 CSV 자동 시각화 차트 생성(histogram/boxplot/top bar, matplotlib 설치 시)
+  - 다중 CSV 자동 시각화 차트 생성(histogram/boxplot/top bar/scatter/missing-bar, matplotlib 설치 시)
   - 브라우저 UI(`bitnet-analyze ui`)
   - **윈도우 데스크톱 UI(`bitnet-analyze desktop`, `BitNet_Desktop_Start.bat`)**
 - 남은 과제
   - 대시보드형 시각화 UI 고도화(필터/드릴다운)
   - 데이터 전처리 규칙(날짜/카테고리 자동 인식) 고도화
+  - 수십 MB 이상 다중 파일에서 차트 생성 최적화(샘플링/청크화)
+
+### 처리 규모 가이드
+
+- 단일/다중 CSV 분석(`analyze`, `multi-analyze`)은 스트리밍 누적 통계를 사용해 수십 MB 수준까지 안정 처리하도록 개선됨
+- 차트 생성(`--charts-dir`)은 matplotlib 기반이며 파일을 메모리에 적재해 그리므로 더 큰 파일에서는 샘플링 전략 권장
 
 ### 파일 붙여넣기 분석 가능 범위
 
