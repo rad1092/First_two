@@ -7,7 +7,7 @@
 
 ## 0) 현재 완성도 빠른 진단
 
-현 시점 기준 기능 완성도(실사용 관점): **약 80%**
+현 시점 기준 기능 완성도(실사용 관점): **약 88%**
 
 - 완료
   - CSV 기초 요약(행/열/결측/숫자 통계)
@@ -16,9 +16,8 @@
   - 브라우저 UI(`bitnet-analyze ui`)
   - **윈도우 데스크톱 UI(`bitnet-analyze desktop`, `BitNet_Desktop_Start.bat`)**
 - 남은 과제
-  - 대용량 CSV(수십~수백 MB) 스트리밍 처리
   - 시각화(차트) 및 리포트 내보내기
-  - 실행 전 환경진단(ollama 설치 여부 자동 점검)
+  - 데이터 전처리 규칙(날짜/카테고리 자동 인식) 고도화
 
 ### 파일 붙여넣기 분석 가능 범위
 
@@ -127,6 +126,8 @@ jupyter lab
 - 패키지 설치(`pip install -e .`)
 - `pythonw`로 GUI 실행(콘솔창 없이)
 
+데스크톱 UI 내 `환경진단` 버튼으로 Ollama 설치/실행/모델 보유 여부를 즉시 확인할 수 있습니다.
+
 ---
 
 ## 4) BitNet 기본 설정값 (안정성 우선)
@@ -206,6 +207,9 @@ bitnet-analyze ui --host 127.0.0.1 --port 8765
 
 # 5) 데스크톱 UI 실행
 bitnet-analyze desktop
+
+# 6) 환경 진단
+bitnet-analyze doctor --model bitnet:latest
 ```
 
 ---

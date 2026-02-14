@@ -38,3 +38,13 @@ def test_build_analysis_payload_from_csv_text():
 
     assert payload["csv_path"] == "<inline_csv>"
     assert payload["summary"]["row_count"] == 2
+
+
+def test_streaming_summary_keeps_mixed_type_as_string(tmp_path):
+    p = tmp_path / "mixed.csv"
+    p.write_text("a,b\n1,10\n2,hello\n", encoding="utf-8")
+
+    payload = build_analysis_payload(p, "검증")
+
+    assert payload["summary"]["dtypes"]["b"] == "string"
+    assert "b" not in payload["summary"]["numeric_stats"]

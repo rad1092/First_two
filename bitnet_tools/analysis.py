@@ -5,7 +5,6 @@ import csv
 import io
 import json
 from pathlib import Path
-from statistics import mean
 from typing import Any
 
 
@@ -40,11 +39,20 @@ def _to_float(value: str) -> float | None:
 
 
 def summarize_rows(rows: list[dict[str, str]], columns: list[str]) -> DataSummary:
+    return summarize_reader(rows, columns)
+
+
+def summarize_reader(rows: Any, columns: list[str]) -> DataSummary:
     missing_counts = {col: 0 for col in columns}
-    numeric_values: dict[str, list[float]] = {col: [] for col in columns}
+    numeric_counts: dict[str, int] = {col: 0 for col in columns}
+    numeric_sums: dict[str, float] = {col: 0.0 for col in columns}
+    numeric_mins: dict[str, float] = {}
+    numeric_maxs: dict[str, float] = {}
     text_seen: dict[str, bool] = {col: False for col in columns}
+    row_count = 0
 
     for row in rows:
+        row_count += 1
         for col in columns:
             raw = (row.get(col) or "").strip()
             if raw == "":
@@ -54,25 +62,30 @@ def summarize_rows(rows: list[dict[str, str]], columns: list[str]) -> DataSummar
             if num is None:
                 text_seen[col] = True
             else:
-                numeric_values[col].append(num)
+                numeric_counts[col] += 1
+                numeric_sums[col] += num
+                if col not in numeric_mins or num < numeric_mins[col]:
+                    numeric_mins[col] = num
+                if col not in numeric_maxs or num > numeric_maxs[col]:
+                    numeric_maxs[col] = num
 
     dtypes: dict[str, str] = {}
     numeric_stats: dict[str, dict[str, float]] = {}
     for col in columns:
-        values = numeric_values[col]
-        if values and not text_seen[col]:
+        count = numeric_counts[col]
+        if count > 0 and not text_seen[col]:
             dtypes[col] = "float"
             numeric_stats[col] = {
-                "count": float(len(values)),
-                "mean": float(mean(values)),
-                "min": float(min(values)),
-                "max": float(max(values)),
+                "count": float(count),
+                "mean": float(numeric_sums[col] / count),
+                "min": float(numeric_mins[col]),
+                "max": float(numeric_maxs[col]),
             }
         else:
             dtypes[col] = "string"
 
     return DataSummary(
-        row_count=len(rows),
+        row_count=row_count,
         column_count=len(columns),
         columns=columns,
         dtypes=dtypes,
@@ -101,9 +114,8 @@ def build_analysis_payload(csv_path: str | Path, question: str) -> dict[str, Any
         if reader.fieldnames is None:
             raise ValueError("CSV header not found")
         columns = [str(c) for c in reader.fieldnames]
-        rows = list(reader)
 
-    summary = summarize_rows(rows, columns)
+        summary = summarize_reader(reader, columns)
 
     return {
         "csv_path": str(path),
@@ -119,8 +131,7 @@ def build_analysis_payload_from_csv_text(csv_text: str, question: str) -> dict[s
         raise ValueError("CSV header not found")
 
     columns = [str(c) for c in reader.fieldnames]
-    rows = list(reader)
-    summary = summarize_rows(rows, columns)
+    summary = summarize_reader(reader, columns)
 
     return {
         "csv_path": "<inline_csv>",

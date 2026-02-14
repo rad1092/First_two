@@ -8,6 +8,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from .analysis import build_analysis_payload
+from .doctor import collect_environment
 
 
 def run_ollama(model: str, prompt: str) -> str:
@@ -84,7 +85,8 @@ class DesktopApp:
         self.model.insert(0, "bitnet:latest")
         self.model.pack(side="left", fill="x", expand=True, padx=8)
 
-        ttk.Button(model_row, text="1) 분석", command=self._analyze_async).pack(side="left", padx=(8, 4))
+        ttk.Button(model_row, text="환경진단", command=self._doctor_async).pack(side="left", padx=(8, 4))
+        ttk.Button(model_row, text="1) 분석", command=self._analyze_async).pack(side="left", padx=(0, 4))
         ttk.Button(model_row, text="2) BitNet 실행", command=self._run_model_async).pack(side="left")
 
         self.status = ttk.Label(frame, text="대기 중")
@@ -152,6 +154,19 @@ class DesktopApp:
             self._on_ui(self._set_status, "분석 완료")
         except Exception as exc:
             self._on_ui(self._set_status, f"오류: {exc}")
+
+
+    def _doctor_async(self) -> None:
+        threading.Thread(target=self._doctor, daemon=True).start()
+
+    def _doctor(self) -> None:
+        self._on_ui(self._set_status, "환경 진단 중...")
+        report = collect_environment(model=self.model.get().strip() or None)
+        self._on_ui(self._set_text, self.answer, json.dumps(report, ensure_ascii=False, indent=2))
+        if report.get("ollama_installed") and report.get("ollama_running"):
+            self._on_ui(self._set_status, "환경 진단 완료 (정상)")
+        else:
+            self._on_ui(self._set_status, "환경 진단 완료 (확인 필요)")
 
     def _run_model_async(self) -> None:
         threading.Thread(target=self._run_model, daemon=True).start()
