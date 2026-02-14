@@ -27,3 +27,18 @@ def test_cli_ui_mode(monkeypatch):
 
     assert code == 0
     assert called == {"host": "0.0.0.0", "port": 9999}
+
+
+def test_cli_doctor_mode(monkeypatch, capsys):
+    monkeypatch.setattr(
+        cli,
+        "collect_environment",
+        lambda model=None: {"ollama_installed": True, "model_requested": model},
+    )
+
+    code = cli.main(["doctor", "--model", "bitnet:latest"])
+
+    assert code == 0
+    out = capsys.readouterr().out
+    assert '"ollama_installed": true' in out
+    assert '"model_requested": "bitnet:latest"' in out

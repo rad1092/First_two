@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from .analysis import build_analysis_payload
+from .doctor import collect_environment
 from .web import serve
 
 
@@ -47,12 +48,17 @@ def _build_parser() -> argparse.ArgumentParser:
     ui_parser.add_argument("--host", default="127.0.0.1", help="Bind host")
     ui_parser.add_argument("--port", default=8765, type=int, help="Bind port")
 
+    subparsers.add_parser("desktop", help="Run Windows desktop UI")
+
+    doctor_parser = subparsers.add_parser("doctor", help="Run local environment diagnostics")
+    doctor_parser.add_argument("--model", default=None, help="Optional model tag to check availability")
+
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     raw_args = list(sys.argv[1:] if argv is None else argv)
-    if raw_args and raw_args[0] not in {"analyze", "ui", "-h", "--help"}:
+    if raw_args and raw_args[0] not in {"analyze", "ui", "desktop", "doctor", "-h", "--help"}:
         raw_args.insert(0, "analyze")
 
     parser = _build_parser()
@@ -60,6 +66,17 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "ui":
         serve(host=args.host, port=args.port)
+        return 0
+
+    if args.command == "desktop":
+        from .desktop import launch_desktop
+
+        launch_desktop()
+        return 0
+
+    if args.command == "doctor":
+        report = collect_environment(model=args.model)
+        print(json.dumps(report, ensure_ascii=False, indent=2))
         return 0
 
     if args.command == "analyze":
