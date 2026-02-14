@@ -104,6 +104,32 @@ def build_prompt(summary: DataSummary, question: str) -> str:
     )
 
 
+def build_markdown_report(summary: DataSummary, question: str) -> str:
+    lines = [
+        "# BitNet CSV 분석 보고서",
+        "",
+        f"- 질문: {question}",
+        f"- 행 수: {summary.row_count}",
+        f"- 열 수: {summary.column_count}",
+        "",
+        "## 컬럼 정보",
+        "",
+        "| 컬럼 | 타입 | 결측 수 |",
+        "|---|---|---:|",
+    ]
+    for col in summary.columns:
+        lines.append(f"| {col} | {summary.dtypes.get(col, 'string')} | {summary.missing_counts.get(col, 0)} |")
+
+    if summary.numeric_stats:
+        lines.extend(["", "## 수치형 통계", "", "| 컬럼 | count | mean | min | max |", "|---|---:|---:|---:|---:|"])
+        for col, stats in summary.numeric_stats.items():
+            lines.append(
+                f"| {col} | {stats['count']:.0f} | {stats['mean']:.4f} | {stats['min']:.4f} | {stats['max']:.4f} |"
+            )
+
+    return "\n".join(lines)
+
+
 def build_analysis_payload(csv_path: str | Path, question: str) -> dict[str, Any]:
     path = Path(csv_path)
     if not path.exists():

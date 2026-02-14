@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .analysis import build_analysis_payload
+from .analysis import DataSummary, build_analysis_payload, build_markdown_report
 from .doctor import collect_environment
 from .web import serve
 
@@ -53,12 +53,22 @@ def _build_parser() -> argparse.ArgumentParser:
     doctor_parser = subparsers.add_parser("doctor", help="Run local environment diagnostics")
     doctor_parser.add_argument("--model", default=None, help="Optional model tag to check availability")
 
+    report_parser = subparsers.add_parser("report", help="Build markdown summary report from CSV")
+    report_parser.add_argument("csv", type=Path, help="Input CSV path")
+    report_parser.add_argument("--question", required=True, help="Analysis question")
+    report_parser.add_argument(
+        "--out",
+        type=Path,
+        default=Path("analysis_report.md"),
+        help="Where to store generated markdown report",
+    )
+
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     raw_args = list(sys.argv[1:] if argv is None else argv)
-    if raw_args and raw_args[0] not in {"analyze", "ui", "desktop", "doctor", "-h", "--help"}:
+    if raw_args and raw_args[0] not in {"analyze", "ui", "desktop", "doctor", "report", "-h", "--help"}:
         raw_args.insert(0, "analyze")
 
     parser = _build_parser()
@@ -77,6 +87,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "doctor":
         report = collect_environment(model=args.model)
         print(json.dumps(report, ensure_ascii=False, indent=2))
+        return 0
+
+
+    if args.command == "report":
+        payload = build_analysis_payload(args.csv, args.question)
+        summary = DataSummary(**payload["summary"])
+        report = build_markdown_report(summary, args.question)
+        args.out.write_text(report, encoding="utf-8")
+        print(f"report saved: {args.out}")
         return 0
 
     if args.command == "analyze":

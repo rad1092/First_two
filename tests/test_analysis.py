@@ -2,6 +2,7 @@ from bitnet_tools.analysis import (
     build_analysis_payload,
     build_analysis_payload_from_csv_text,
     summarize_rows,
+    build_markdown_report,
 )
 
 
@@ -48,3 +49,13 @@ def test_streaming_summary_keeps_mixed_type_as_string(tmp_path):
 
     assert payload["summary"]["dtypes"]["b"] == "string"
     assert "b" not in payload["summary"]["numeric_stats"]
+
+
+def test_build_markdown_report():
+    rows = [{"a": "1", "b": "10"}, {"a": "2", "b": "20"}]
+    summary = summarize_rows(rows, ["a", "b"])
+    report = build_markdown_report(summary, "테스트 질문")
+
+    assert "# BitNet CSV 분석 보고서" in report
+    assert "| a |" in report
+    assert "테스트 질문" in report

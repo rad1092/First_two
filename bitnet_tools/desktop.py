@@ -5,9 +5,9 @@ import subprocess
 import threading
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, ttk
 
-from .analysis import build_analysis_payload
+from .analysis import build_analysis_payload, build_analysis_payload_from_csv_text
 from .doctor import collect_environment
 
 
@@ -47,7 +47,7 @@ class DesktopApp:
 
         sub = ttk.Label(
             frame,
-            text="CSV 선택 → 분석 → BitNet 실행 순서로 사용하세요.",
+            text="CSV 선택/붙여넣기 → 분석 → BitNet 실행 순서로 사용하세요.",
         )
         sub.pack(anchor="w", pady=(0, 10))
 
@@ -57,6 +57,11 @@ class DesktopApp:
 
         self.csv_label = ttk.Label(top_row, text="선택된 파일 없음")
         self.csv_label.pack(side="left", padx=12)
+
+        csv_row = ttk.LabelFrame(frame, text="CSV 텍스트 (파일 미선택 시 여기에 붙여넣기)")
+        csv_row.pack(fill="both", pady=(0, 8))
+        self.csv_text = tk.Text(csv_row, height=8, wrap="none")
+        self.csv_text.pack(fill="both", expand=True, padx=8, pady=8)
 
         question_row = ttk.LabelFrame(frame, text="질문")
         question_row.pack(fill="x", pady=(0, 8))
@@ -125,6 +130,9 @@ class DesktopApp:
             return
         self.csv_path = Path(path)
         self.csv_label.configure(text=str(self.csv_path))
+        content = self.csv_path.read_text(encoding="utf-8")
+        self.csv_text.delete("1.0", "end")
+        self.csv_text.insert("1.0", content)
 
     def _get_question(self) -> str:
         question = self.question.get("1.0", "end").strip()
@@ -137,14 +145,13 @@ class DesktopApp:
         self._on_ui(self._set_status, "분석 중...")
         try:
             question = self._get_question()
+            csv_text = self.csv_text.get("1.0", "end").strip()
             if self.csv_path:
                 payload = build_analysis_payload(self.csv_path, question)
+            elif csv_text:
+                payload = build_analysis_payload_from_csv_text(csv_text, question)
             else:
-                self._on_ui(
-                    messagebox.showinfo,
-                    "파일 미선택",
-                    "CSV를 선택하지 않아 본문 텍스트 입력을 안내합니다. 텍스트 박스에 CSV를 붙여넣으세요.",
-                )
+                self._on_ui(self._set_status, "CSV 파일을 선택하거나 CSV 텍스트를 붙여넣어 주세요")
                 return
 
             self.latest_prompt = payload["prompt"]
@@ -154,7 +161,6 @@ class DesktopApp:
             self._on_ui(self._set_status, "분석 완료")
         except Exception as exc:
             self._on_ui(self._set_status, f"오류: {exc}")
-
 
     def _doctor_async(self) -> None:
         threading.Thread(target=self._doctor, daemon=True).start()
