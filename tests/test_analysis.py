@@ -102,3 +102,27 @@ def test_multi_csv_large_row_count(tmp_path):
 
     assert result["total_row_count"] == 5000
     assert result["files"][0]["summary"]["row_count"] == 5000
+
+
+def test_multi_csv_semantic_type_and_insights(tmp_path):
+    p = tmp_path / "typed.csv"
+    p.write_text("dt,lat,val,cat\n2024-01-01,37.5,1,A\n2024-01-02,37.6,1000,A\n", encoding="utf-8")
+
+    result = analyze_multiple_csv([p], "의미타입")
+    prof = result["files"][0]["column_profiles"]
+
+    assert prof["dt"]["semantic_type"] == "date"
+    assert prof["lat"]["semantic_type"] in {"geo_latitude", "numeric"}
+    assert isinstance(result.get("insights"), list)
+
+
+def test_multi_csv_cache_created(tmp_path, monkeypatch):
+    import bitnet_tools.multi_csv as multi
+
+    monkeypatch.setattr(multi, "CACHE_DIR", tmp_path / ".cache")
+    p = tmp_path / "cache.csv"
+    p.write_text("a,b\n1,2\n", encoding="utf-8")
+
+    result = multi.analyze_multiple_csv([p], "캐시")
+    assert result["file_count"] == 1
+    assert any((tmp_path / ".cache").glob("*.json"))

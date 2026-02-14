@@ -79,6 +79,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional directory to save visualization charts",
     )
+    multi_parser.add_argument("--no-cache", action="store_true", help="Disable file profile cache")
 
     report_parser = subparsers.add_parser("report", help="Build markdown summary report from CSV")
     report_parser.add_argument("csv", type=Path, help="Input CSV path")
@@ -124,6 +125,7 @@ def main(argv: list[str] | None = None) -> int:
             args.question,
             group_column=args.group_column,
             target_column=args.target_column,
+            use_cache=not args.no_cache,
         )
         if args.charts_dir is not None:
             try:
