@@ -2,7 +2,10 @@ from bitnet_tools.analysis import (
     build_analysis_payload,
     build_analysis_payload_from_csv_text,
     summarize_rows,
+    build_markdown_report,
 )
+from bitnet_tools.multi_csv import analyze_multiple_csv, build_multi_csv_markdown
+
 
 
 def test_summarize_rows_basic():
@@ -38,3 +41,51 @@ def test_build_analysis_payload_from_csv_text():
 
     assert payload["csv_path"] == "<inline_csv>"
     assert payload["summary"]["row_count"] == 2
+
+
+def test_streaming_summary_keeps_mixed_type_as_string(tmp_path):
+    p = tmp_path / "mixed.csv"
+    p.write_text("a,b\n1,10\n2,hello\n", encoding="utf-8")
+
+    payload = build_analysis_payload(p, "검증")
+
+    assert payload["summary"]["dtypes"]["b"] == "string"
+    assert "b" not in payload["summary"]["numeric_stats"]
+
+
+def test_build_markdown_report():
+    rows = [{"a": "1", "b": "10"}, {"a": "2", "b": "20"}]
+    summary = summarize_rows(rows, ["a", "b"])
+    report = build_markdown_report(summary, "테스트 질문")
+
+    assert "# BitNet CSV 분석 보고서" in report
+    assert "| a |" in report
+    assert "테스트 질문" in report
+
+
+def test_multi_csv_report_builder(tmp_path):
+    p1 = tmp_path / "a.csv"
+    p2 = tmp_path / "b.csv"
+    p1.write_text("city,v\nseoul,1\n", encoding="utf-8")
+    p2.write_text("city,v2\nseoul,2\n", encoding="utf-8")
+
+    result = analyze_multiple_csv([p1, p2], "비교")
+    report = build_multi_csv_markdown(result)
+
+    assert result["file_count"] == 2
+    assert "city" in result["shared_columns"]
+    assert "다중 CSV 분석 리포트" in report
+
+
+def test_multi_csv_schema_drift_and_group_ratio(tmp_path):
+    p1 = tmp_path / "a.csv"
+    p2 = tmp_path / "b.csv"
+    p1.write_text("city,type,val\nseoul,A,1\nseoul,B,2\n", encoding="utf-8")
+    p2.write_text("city,type,val\nseoul,A,100\nbusan,A,200\n", encoding="utf-8")
+
+    result = analyze_multiple_csv([p1, p2], "드리프트", group_column="city", target_column="type")
+
+    assert "schema_drift" in result
+    assert "val" in result["schema_drift"]
+    assert result["schema_drift"]["val"]["mean_range"] > 0
+    assert result["files"][0]["group_target_ratio"] is not None
