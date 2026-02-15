@@ -17,6 +17,8 @@ const UI = {
   schemaMappings: document.getElementById('schemaMappings'),
   prompt: document.getElementById('prompt'),
   answer: document.getElementById('answer'),
+  rawJson: document.getElementById('rawJson'),
+  codeDetails: document.getElementById('codeDetails'),
   analyzeAssist: document.getElementById('analyzeAssist'),
   confidenceBadge: document.getElementById('confidenceBadge'),
   switchToCsvBtn: document.getElementById('switchToCsvBtn'),
@@ -95,6 +97,36 @@ const CONFIDENCE_THRESHOLD_DEFAULT = 0.7;
 const CANDIDATE_PREVIEW_ROWS = 5;
 
 
+
+const CODE_REQUEST_PATTERN = /코드도\s*보여줘/;
+
+function shouldShowCodeBlock() {
+  return CODE_REQUEST_PATTERN.test(String(UI.question?.value || ''));
+}
+
+function formatCoreSummary(summary) {
+  if (!summary) return '요약 결과가 없습니다.';
+  if (typeof summary === 'string') return summary;
+  if (Array.isArray(summary)) return summary.slice(0, 3).map((item, idx) => `${idx + 1}. ${item}`).join('\n');
+  const lines = [];
+  const insights = Array.isArray(summary.insights) ? summary.insights : [];
+  if (insights.length) lines.push(...insights.slice(0, 3).map((item, idx) => `${idx + 1}. ${item}`));
+  if (!lines.length) {
+    Object.entries(summary).slice(0, 3).forEach(([key, value]) => {
+      if (Array.isArray(value)) lines.push(`${key}: ${value.slice(0, 3).join(', ')}`);
+      else if (value && typeof value === 'object') lines.push(`${key}: ${JSON.stringify(value)}`);
+      else lines.push(`${key}: ${value}`);
+    });
+  }
+  return lines.length ? lines.join('\n') : '핵심 결과를 추출하지 못했습니다.';
+}
+
+function renderPrimaryResult(data) {
+  if (UI.summary) UI.summary.textContent = formatCoreSummary(data?.summary);
+  if (UI.prompt) UI.prompt.textContent = data?.prompt || '';
+  if (UI.rawJson) UI.rawJson.textContent = JSON.stringify(data || {}, null, 2);
+  if (UI.codeDetails) UI.codeDetails.hidden = !shouldShowCodeBlock();
+}
 function getInputTypeForFile(file) {
   const selected = UI.inputType?.value || 'auto';
   if (selected !== 'auto') return selected;
@@ -736,10 +768,9 @@ async function runAnalyzeFromPreprocessed(result, fallbackQuestion = '') {
   };
   const data = await postJson('/api/analyze', body, '분석');
   appState.latestPrompt = data.prompt;
-  UI.summary.textContent = JSON.stringify(data.summary, null, 2);
+  renderPrimaryResult(data);
   renderSchemaMappings(data);
   renderAnalyzeAssist(data);
-  if (UI.prompt) UI.prompt.textContent = data.prompt;
   if (UI.answer) UI.answer.textContent = '';
   setStatus(STATUS.analyzeDone);
 }
@@ -905,6 +936,7 @@ async function runAnalyze() {
   resetAnalyzeAssist();
   setStatus(STATUS.analyzing);
   UI.summary.textContent = STATUS.analyzing;
+  if (UI.codeDetails) UI.codeDetails.hidden = true;
   if (UI.schemaMappings) UI.schemaMappings.textContent = '자동 매핑 결과를 계산 중입니다...';
   toggleBusy(true);
   try {
