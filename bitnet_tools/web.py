@@ -1,18 +1,85 @@
 from __future__ import annotations
 
 from http import HTTPStatus
+from concurrent.futures import Future, ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
 import subprocess
 import tempfile
+import threading
+import uuid
+from typing import Any
 from urllib.parse import urlparse
 
 from .analysis import build_analysis_payload_from_csv_text
 from .multi_csv import analyze_multiple_csv
+from .visualize import create_multi_charts
 
 
 UI_DIR = Path(__file__).parent / "ui"
+
+
+CHART_JOB_DIR = Path('.bitnet_cache') / 'chart_jobs'
+_CHART_EXECUTOR = ThreadPoolExecutor(max_workers=2)
+_CHART_JOBS: dict[str, Future] = {}
+_CHART_LOCK = threading.Lock()
+
+
+def _run_chart_job(job_id: str, files: list[dict[str, str]]) -> dict[str, Any]:
+    CHART_JOB_DIR.mkdir(parents=True, exist_ok=True)
+    job_input_dir = CHART_JOB_DIR / f"{job_id}_input"
+    out_dir = CHART_JOB_DIR / f"{job_id}_charts"
+    job_input_dir.mkdir(parents=True, exist_ok=True)
+
+    csv_paths: list[Path] = []
+    for i, item in enumerate(files):
+        name = str(item.get('name', f'file_{i}.csv'))
+        text = str(item.get('csv_text', ''))
+        if not text.strip():
+            continue
+        if not name.endswith('.csv'):
+            name = f"{name}.csv"
+        path = job_input_dir / name
+        path.write_text(text, encoding='utf-8')
+        csv_paths.append(path)
+
+    if not csv_paths:
+        raise ValueError('valid csv_text files are required')
+
+    charts = create_multi_charts(csv_paths, out_dir)
+    return {
+        'job_id': job_id,
+        'status': 'done',
+        'chart_count': sum(len(v) for v in charts.values()),
+        'charts': charts,
+        'output_dir': str(out_dir),
+    }
+
+
+def submit_chart_job(files: list[dict[str, str]]) -> str:
+    if not isinstance(files, list) or not files:
+        raise ValueError('files is required')
+    job_id = uuid.uuid4().hex
+    future = _CHART_EXECUTOR.submit(_run_chart_job, job_id, files)
+    with _CHART_LOCK:
+        _CHART_JOBS[job_id] = future
+    return job_id
+
+
+def get_chart_job(job_id: str) -> dict[str, Any]:
+    with _CHART_LOCK:
+        future = _CHART_JOBS.get(job_id)
+
+    if future is None:
+        return {'job_id': job_id, 'status': 'not_found'}
+    if not future.done():
+        return {'job_id': job_id, 'status': 'running'}
+    try:
+        return future.result()
+    except Exception as exc:
+        return {'job_id': job_id, 'status': 'failed', 'error': str(exc)}
+
 
 
 def run_ollama(model: str, prompt: str) -> str:
@@ -55,6 +122,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_file(UI_DIR / "app.js", "application/javascript; charset=utf-8")
         if route == "/styles.css":
             return self._send_file(UI_DIR / "styles.css", "text/css; charset=utf-8")
+        if route.startswith('/api/charts/jobs/'):
+            job_id = route.split('/')[-1].strip()
+            if not job_id:
+                return self._send_json({'error': 'job id is required'}, HTTPStatus.BAD_REQUEST)
+            return self._send_json(get_chart_job(job_id))
         self.send_error(HTTPStatus.NOT_FOUND)
 
     def do_POST(self) -> None:
@@ -112,6 +184,11 @@ class Handler(BaseHTTPRequestHandler):
                         use_cache=False,
                     )
                     return self._send_json(result)
+
+            if route == "/api/charts/jobs":
+                files = payload.get('files', [])
+                job_id = submit_chart_job(files)
+                return self._send_json({'job_id': job_id, 'status': 'queued'}, HTTPStatus.ACCEPTED)
 
             if route == "/api/run":
                 model = str(payload.get("model", "")).strip()
