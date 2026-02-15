@@ -149,6 +149,58 @@ def test_multi_csv_top_values_capped_marker(monkeypatch, tmp_path):
     assert any(x["value"] == "__OTHER__" for x in prof["top_values"])
 
 
+def test_multi_csv_cache_ttl_expires_entry(tmp_path, monkeypatch):
+    import bitnet_tools.multi_csv as multi
+
+    monkeypatch.setattr(multi, "CACHE_DIR", tmp_path / ".cache")
+    monkeypatch.setattr(multi, "CACHE_ENTRY_TTL_SECONDS", 1)
+
+    p = tmp_path / "ttl.csv"
+    p.write_text("a,b\n1,2\n", encoding="utf-8")
+
+    first = multi.analyze_multiple_csv([p], "ttl")
+    assert first["file_count"] == 1
+    cache_files = list((tmp_path / ".cache").glob("*.json"))
+    assert cache_files
+
+    cache_file = next(x for x in cache_files if x.name != "multi_csv_cache_index.json")
+    stale = cache_file.stat().st_mtime - 3600
+    import os
+
+    os.utime(cache_file, (stale, stale))
+    _ = multi._load_cached_profile(p, None, None)
+
+    assert not cache_file.exists()
+
+
+def test_multi_csv_cache_capacity_uses_lru_eviction(tmp_path, monkeypatch):
+    import bitnet_tools.multi_csv as multi
+
+    monkeypatch.setattr(multi, "CACHE_DIR", tmp_path / ".cache")
+    monkeypatch.setattr(multi, "CACHE_MAX_TOTAL_BYTES", 220)
+    monkeypatch.setattr(multi, "CACHE_ENTRY_TTL_SECONDS", 60 * 60)
+
+    p1 = tmp_path / "a.csv"
+    p2 = tmp_path / "b.csv"
+    p3 = tmp_path / "c.csv"
+    p1.write_text("a,b\n1,2\n", encoding="utf-8")
+    p2.write_text("a,b\n3,4\n", encoding="utf-8")
+    p3.write_text("a,b\n5,6\n", encoding="utf-8")
+
+    multi._save_cached_profile(p1, None, None, {"v": "x" * 120})
+    multi._save_cached_profile(p2, None, None, {"v": "y" * 120})
+    multi._save_cached_profile(p3, None, None, {"v": "z" * 120})
+
+    cp1 = multi._cache_path(p1, None, None)
+    cp2 = multi._cache_path(p2, None, None)
+    cp3 = multi._cache_path(p3, None, None)
+
+    # 용량 초과 시 가장 오래된 항목부터 제거되어 최신 항목만 유지
+    assert not cp1.exists()
+    assert not cp2.exists()
+    assert cp3.exists()
+
+
 def test_multi_csv_with_parallel_workers(tmp_path):
     p1 = tmp_path / "a.csv"
     p2 = tmp_path / "b.csv"
