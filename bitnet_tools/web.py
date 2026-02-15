@@ -12,7 +12,7 @@ import uuid
 from typing import Any
 from urllib.parse import urlparse
 
-from .analysis import build_analysis_payload_from_csv_text
+from .analysis import build_analysis_payload_from_request
 from .multi_csv import analyze_multiple_csv
 from .visualize import create_multi_charts
 
@@ -95,8 +95,20 @@ def run_ollama(model: str, prompt: str) -> str:
 
 
 class Handler(BaseHTTPRequestHandler):
-    def _error_payload(self, message: str, detail: str | None = None) -> dict[str, str]:
-        return {"error": message, "error_detail": detail or message}
+    def _error_payload(
+        self,
+        message: str,
+        detail: str | None = None,
+        *,
+        input_type: str | None = None,
+        preprocessing_stage: str | None = None,
+    ) -> dict[str, str]:
+        data: dict[str, str] = {"error": message, "error_detail": detail or message}
+        if input_type:
+            data["input_type"] = input_type
+        if preprocessing_stage:
+            data["preprocessing_stage"] = preprocessing_stage
+        return data
 
     def _send_json(self, data: dict, status: int = HTTPStatus.OK) -> None:
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
@@ -143,13 +155,33 @@ class Handler(BaseHTTPRequestHandler):
 
         try:
             if route == "/api/analyze":
-                csv_text = str(payload.get("csv_text", ""))
                 question = str(payload.get("question", "")).strip()
-                if not csv_text.strip():
-                    return self._send_json(self._error_payload('csv_text is required'), HTTPStatus.BAD_REQUEST)
                 if not question:
                     question = "이 데이터의 핵심 인사이트를 알려줘"
-                result = build_analysis_payload_from_csv_text(csv_text, question)
+
+                request_payload = {
+                    "input_type": payload.get("input_type", "csv"),
+                    "source_name": payload.get("source_name", "<inline_csv>"),
+                    "normalized_csv_text": payload.get("normalized_csv_text", ""),
+                    "meta": payload.get("meta", {}),
+                    "csv_text": payload.get("csv_text", ""),
+                }
+                try:
+                    result = build_analysis_payload_from_request(request_payload, question)
+                except Exception as exc:
+                    input_type = str(request_payload.get("input_type", "csv") or "csv")
+                    has_normalized = bool(str(request_payload.get("normalized_csv_text", "")).strip())
+                    has_legacy = bool(str(request_payload.get("csv_text", "")).strip())
+                    preprocessing_stage = "normalized_csv_text" if has_normalized else "legacy_csv_text" if has_legacy else "input_validation"
+                    return self._send_json(
+                        self._error_payload(
+                            "analyze payload invalid",
+                            str(exc),
+                            input_type=input_type,
+                            preprocessing_stage=preprocessing_stage,
+                        ),
+                        HTTPStatus.BAD_REQUEST,
+                    )
                 return self._send_json(result)
 
 
@@ -202,7 +234,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json({"answer": answer})
 
         except Exception as exc:  # runtime surface for UI
-            return self._send_json(self._error_payload('request failed', str(exc)), HTTPStatus.BAD_REQUEST)
+            input_type = str(payload.get('input_type', 'csv') or 'csv') if isinstance(payload, dict) else 'csv'
+            return self._send_json(self._error_payload('request failed', str(exc), input_type=input_type, preprocessing_stage='runtime'), HTTPStatus.BAD_REQUEST)
 
         self.send_error(HTTPStatus.NOT_FOUND)
 
