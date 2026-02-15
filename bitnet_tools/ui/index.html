@@ -9,55 +9,70 @@
   <body>
     <main class="container">
       <h1>BitNet CSV Analyzer</h1>
-      <p class="sub">CSV 업로드 → 자동 요약 → BitNet 답변 + 멀티 분석 대시보드.</p>
+      <p class="sub">파일 입력 → 분석 실행 → 결과 확인 순서로 바로 시작하세요.</p>
 
       <section class="panel">
-        <label>CSV 파일</label>
-        <input id="csvFile" type="file" accept=".csv,text/csv" />
-        <textarea id="csvText" rows="8" placeholder="또는 CSV 내용을 직접 붙여넣기"></textarea>
+        <h2>1) 작업 모드</h2>
+        <div class="actions">
+          <button class="mode-btn active" data-mode="quick" id="modeQuickBtn">빠른 시작</button>
+          <button class="mode-btn" data-mode="advanced" id="modeAdvancedBtn">고급 모드</button>
+        </div>
+        <p class="sub">빠른 시작은 핵심 분석에 집중하고, 고급 모드는 멀티 분석/모델 실행 옵션을 제공합니다.</p>
       </section>
 
       <section class="panel">
-        <label>질문</label>
+        <h2>2) 입력</h2>
+        <label>CSV 파일</label>
+        <input id="csvFile" type="file" accept=".csv,text/csv" />
+        <textarea id="csvText" rows="8" placeholder="또는 CSV 내용을 직접 붙여넣기"></textarea>
+
+        <label>요청</label>
         <div class="chips">
           <button class="chip" data-q="핵심 인사이트 3개와 근거를 알려줘">인사이트</button>
           <button class="chip" data-q="이상치 의심 포인트와 추가 확인 항목을 알려줘">이상치</button>
           <button class="chip" data-q="실행 가능한 다음 액션 5개를 우선순위로 제안해줘">다음행동</button>
         </div>
         <textarea id="question" rows="3">핵심 인사이트 3개와 근거를 알려줘</textarea>
+
+        <div class="actions">
+          <button id="quickAnalyzeBtn">바로 분석</button>
+          <button id="analyzeBtn" class="advanced-only">분석</button>
+        </div>
       </section>
 
-      <section class="panel row">
-        <div>
-          <label>BitNet 모델 태그 (선택)</label>
-          <input id="model" placeholder="bitnet:latest" />
-        </div>
+      <section class="panel advanced-only" id="advancedModelPanel">
+        <h2>고급: 모델 실행</h2>
+        <label>BitNet 모델 태그</label>
+        <input id="model" placeholder="bitnet:latest" />
         <div class="actions">
-          <button id="analyzeBtn">1) 분석</button>
-          <button id="runBtn">2) BitNet 실행</button>
+          <button id="runBtn">BitNet 실행</button>
         </div>
       </section>
 
       <section class="panel">
+        <h2>3) 실행 상태</h2>
+        <pre id="statusBox">대기 중</pre>
+      </section>
+
+      <section class="panel">
+        <h2>4) 결과</h2>
         <h3>데이터 요약</h3>
         <pre id="summary"></pre>
       </section>
 
-      <section class="panel">
+      <section class="panel advanced-only">
         <h3>생성 프롬프트</h3>
-        <button id="copyPrompt">복사</button>
+        <div class="actions"><button id="copyPrompt">복사</button></div>
         <pre id="prompt"></pre>
       </section>
 
-      <section class="panel">
+      <section class="panel advanced-only">
         <h3>BitNet 응답</h3>
         <pre id="answer"></pre>
       </section>
 
-      
-      <section class="panel">
-        <h2>멀티 CSV 원클릭 분석</h2>
-        <p class="sub">여러 CSV 파일 선택 후 바로 통합 분석 + 대시보드 반영.</p>
+      <section class="panel advanced-only" id="multiPanel">
+        <h2>고급: 멀티 CSV 분석</h2>
         <input id="multiCsvFiles" type="file" multiple accept=".csv,text/csv" />
         <div class="row">
           <div>
@@ -68,15 +83,14 @@
             <label>타깃 컬럼(선택)</label>
             <input id="targetColumn" placeholder="예: 세차유형" />
           </div>
-          <div class="actions">
-            <button id="multiAnalyzeBtn">멀티 분석 실행</button>
-          </div>
+        </div>
+        <div class="actions">
+          <button id="multiAnalyzeBtn">멀티 분석 실행</button>
         </div>
       </section>
 
-      <section class="panel">
-        <h2>멀티 분석 대시보드(JSON)</h2>
-        <p class="sub">`multi-analyze` 결과 JSON을 붙여넣고 시각적으로 확인하세요.</p>
+      <section class="panel advanced-only" id="dashboardPanel">
+        <h2>고급: 멀티 분석 대시보드(JSON)</h2>
         <textarea id="dashboardJson" rows="10" placeholder='{"file_count":2,...}'></textarea>
         <div class="actions">
           <button id="renderDashboardBtn">대시보드 렌더링</button>

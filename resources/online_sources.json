@@ -1,0 +1,16 @@
+{
+  "tool_packages": [
+    "matplotlib",
+    "pandas",
+    "jupyterlab",
+    "pytest",
+    "playwright"
+  ],
+  "reference_urls": [
+    "https://www.w3.org/WAI/WCAG22/quickref/",
+    "https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA",
+    "https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API",
+    "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl",
+    "https://web.dev/articles/loading-patterns"
+  ]
+}

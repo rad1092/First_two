@@ -3,10 +3,12 @@ const csvText = document.getElementById('csvText');
 const question = document.getElementById('question');
 const model = document.getElementById('model');
 const analyzeBtn = document.getElementById('analyzeBtn');
+const quickAnalyzeBtn = document.getElementById('quickAnalyzeBtn');
 const runBtn = document.getElementById('runBtn');
 const summary = document.getElementById('summary');
 const prompt = document.getElementById('prompt');
 const answer = document.getElementById('answer');
+const statusBox = document.getElementById('statusBox');
 
 const multiCsvFiles = document.getElementById('multiCsvFiles');
 const groupColumn = document.getElementById('groupColumn');
@@ -18,11 +20,39 @@ const dashboardInsights = document.getElementById('dashboardInsights');
 
 let latestPrompt = '';
 
-csvFile.addEventListener('change', async (e) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
-  csvText.value = await file.text();
+function setStatus(message) {
+  if (statusBox) statusBox.textContent = message;
+}
+
+function setMode(mode) {
+  const advancedOnly = document.querySelectorAll('.advanced-only');
+  advancedOnly.forEach((el) => {
+    el.style.display = mode === 'advanced' ? '' : 'none';
+  });
+
+  document.querySelectorAll('.mode-btn').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.mode === mode);
+  });
+
+  if (mode === 'quick') {
+    setStatus('빠른 시작 모드: 파일 입력 후 "바로 분석"을 눌러주세요.');
+  } else {
+    setStatus('고급 모드: 모델 실행, 멀티 분석, 대시보드를 사용할 수 있습니다.');
+  }
+}
+
+document.querySelectorAll('.mode-btn').forEach((btn) => {
+  btn.addEventListener('click', () => setMode(btn.dataset.mode));
 });
+
+if (csvFile) {
+  csvFile.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    csvText.value = await file.text();
+    setStatus(`파일 로드 완료: ${file.name}`);
+  });
+}
 
 document.querySelectorAll('.chip').forEach((chip) => {
   chip.addEventListener('click', () => {
@@ -30,12 +60,17 @@ document.querySelectorAll('.chip').forEach((chip) => {
   });
 });
 
-document.getElementById('copyPrompt').addEventListener('click', async () => {
-  if (!latestPrompt) return;
-  await navigator.clipboard.writeText(latestPrompt);
-});
+const copyPromptBtn = document.getElementById('copyPrompt');
+if (copyPromptBtn) {
+  copyPromptBtn.addEventListener('click', async () => {
+    if (!latestPrompt) return;
+    await navigator.clipboard.writeText(latestPrompt);
+    setStatus('프롬프트가 복사되었습니다.');
+  });
+}
 
-analyzeBtn.addEventListener('click', async () => {
+async function runAnalyze() {
+  setStatus('분석 중...');
   summary.textContent = '분석 중...';
   const res = await fetch('/api/analyze', {
     method: 'POST',
@@ -48,97 +83,120 @@ analyzeBtn.addEventListener('click', async () => {
   const data = await res.json();
   if (!res.ok) {
     summary.textContent = data.error || 'error';
+    setStatus(`분석 실패: ${data.error || 'error'}`);
     return;
   }
 
   latestPrompt = data.prompt;
   summary.textContent = JSON.stringify(data.summary, null, 2);
-  prompt.textContent = data.prompt;
-  answer.textContent = '';
-});
+  if (prompt) prompt.textContent = data.prompt;
+  if (answer) answer.textContent = '';
+  setStatus('분석 완료');
+}
 
-runBtn.addEventListener('click', async () => {
-  if (!latestPrompt) {
-    answer.textContent = '먼저 분석을 실행해 프롬프트를 생성하세요.';
-    return;
-  }
-  if (!model.value.trim()) {
-    answer.textContent = '모델 태그를 입력하세요. 예: bitnet:latest';
-    return;
-  }
+if (analyzeBtn) analyzeBtn.addEventListener('click', runAnalyze);
+if (quickAnalyzeBtn) quickAnalyzeBtn.addEventListener('click', runAnalyze);
 
-  answer.textContent = 'BitNet 실행 중...';
-  const res = await fetch('/api/run', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: model.value.trim(), prompt: latestPrompt }),
+if (runBtn) {
+  runBtn.addEventListener('click', async () => {
+    if (!latestPrompt) {
+      if (answer) answer.textContent = '먼저 분석을 실행해 프롬프트를 생성하세요.';
+      setStatus('모델 실행 중단: 프롬프트가 없습니다.');
+      return;
+    }
+    if (!model.value.trim()) {
+      if (answer) answer.textContent = '모델 태그를 입력하세요. 예: bitnet:latest';
+      setStatus('모델 실행 중단: 모델 태그가 없습니다.');
+      return;
+    }
+
+    setStatus('BitNet 실행 중...');
+    if (answer) answer.textContent = 'BitNet 실행 중...';
+    const res = await fetch('/api/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: model.value.trim(), prompt: latestPrompt }),
+    });
+    const data = await res.json();
+    if (answer) answer.textContent = res.ok ? data.answer : (data.error || 'error');
+    setStatus(res.ok ? 'BitNet 실행 완료' : `BitNet 실행 실패: ${data.error || 'error'}`);
   });
-  const data = await res.json();
-  answer.textContent = res.ok ? data.answer : (data.error || 'error');
-});
+}
 
-document.getElementById('renderDashboardBtn').addEventListener('click', () => {
-  dashboardCards.innerHTML = '';
-  dashboardInsights.textContent = '';
+const renderDashboardBtn = document.getElementById('renderDashboardBtn');
+if (renderDashboardBtn) {
+  renderDashboardBtn.addEventListener('click', () => {
+    dashboardCards.innerHTML = '';
+    dashboardInsights.textContent = '';
 
-  let parsed;
-  try {
-    parsed = JSON.parse(dashboardJson.value || '{}');
-  } catch {
-    dashboardInsights.textContent = 'JSON 형식이 올바르지 않습니다.';
-    return;
-  }
+    let parsed;
+    try {
+      parsed = JSON.parse(dashboardJson.value || '{}');
+    } catch {
+      dashboardInsights.textContent = 'JSON 형식이 올바르지 않습니다.';
+      setStatus('대시보드 렌더 실패: JSON 형식 오류');
+      return;
+    }
 
-  const cardItems = [
-    ['파일 수', parsed.file_count ?? '-'],
-    ['총 행 수', parsed.total_row_count ?? '-'],
-    ['공통 컬럼 수', (parsed.shared_columns || []).length],
-    ['인사이트 수', (parsed.insights || []).length],
-  ];
+    const cardItems = [
+      ['파일 수', parsed.file_count ?? '-'],
+      ['총 행 수', parsed.total_row_count ?? '-'],
+      ['공통 컬럼 수', (parsed.shared_columns || []).length],
+      ['인사이트 수', (parsed.insights || []).length],
+    ];
 
-  cardItems.forEach(([k, v]) => {
-    const div = document.createElement('div');
-    div.className = 'card';
-    div.innerHTML = `<strong>${k}</strong><span>${v}</span>`;
-    dashboardCards.appendChild(div);
+    cardItems.forEach(([k, v]) => {
+      const div = document.createElement('div');
+      div.className = 'card';
+      div.innerHTML = `<strong>${k}</strong><span>${v}</span>`;
+      dashboardCards.appendChild(div);
+    });
+
+    const insights = parsed.insights || [];
+    dashboardInsights.textContent = insights.length
+      ? insights.map((x, i) => `${i + 1}. ${x}`).join('\n')
+      : '인사이트 항목이 없습니다.';
+    setStatus('대시보드 렌더 완료');
   });
+}
 
-  const insights = parsed.insights || [];
-  dashboardInsights.textContent = insights.length
-    ? insights.map((x, i) => `${i + 1}. ${x}`).join('\n')
-    : '인사이트 항목이 없습니다.';
-});
+if (multiAnalyzeBtn) {
+  multiAnalyzeBtn.addEventListener('click', async () => {
+    const files = [...(multiCsvFiles.files || [])];
+    if (!files.length) {
+      dashboardInsights.textContent = '멀티 CSV 파일을 먼저 선택하세요.';
+      setStatus('멀티 분석 중단: 파일 없음');
+      return;
+    }
 
+    setStatus('멀티 분석 중...');
+    dashboardInsights.textContent = '멀티 분석 중...';
+    const payloadFiles = [];
+    for (const f of files) {
+      payloadFiles.push({ name: f.name, csv_text: await f.text() });
+    }
 
-multiAnalyzeBtn.addEventListener('click', async () => {
-  const files = [...(multiCsvFiles.files || [])];
-  if (!files.length) {
-    dashboardInsights.textContent = '멀티 CSV 파일을 먼저 선택하세요.';
-    return;
-  }
+    const res = await fetch('/api/multi-analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        files: payloadFiles,
+        question: question.value,
+        group_column: groupColumn.value.trim(),
+        target_column: targetColumn.value.trim(),
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      dashboardInsights.textContent = data.error || 'error';
+      setStatus(`멀티 분석 실패: ${data.error || 'error'}`);
+      return;
+    }
 
-  dashboardInsights.textContent = '멀티 분석 중...';
-  const payloadFiles = [];
-  for (const f of files) {
-    payloadFiles.push({ name: f.name, csv_text: await f.text() });
-  }
-
-  const res = await fetch('/api/multi-analyze', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      files: payloadFiles,
-      question: question.value,
-      group_column: groupColumn.value.trim(),
-      target_column: targetColumn.value.trim(),
-    }),
+    dashboardJson.value = JSON.stringify(data, null, 2);
+    renderDashboardBtn.click();
+    setStatus('멀티 분석 완료');
   });
-  const data = await res.json();
-  if (!res.ok) {
-    dashboardInsights.textContent = data.error || 'error';
-    return;
-  }
+}
 
-  dashboardJson.value = JSON.stringify(data, null, 2);
-  document.getElementById('renderDashboardBtn').click();
-});
+setMode('quick');
