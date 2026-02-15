@@ -82,3 +82,35 @@ pre {
 }
 .card strong { color: var(--muted); font-size: 12px; }
 .card span { font-size: 18px; font-weight: 700; }
+
+
+.quick-guide {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+}
+.quick-guide li { margin: 4px 0; }
+
+
+.intent-actions {
+  margin: 8px 0 2px;
+  min-height: 36px;
+}
+
+
+.error-user {
+  margin-top: 8px;
+  color: #fecaca;
+  font-weight: 600;
+}
+.error-details {
+  margin-top: 8px;
+  border: 1px solid #7f1d1d;
+  border-radius: 8px;
+  padding: 8px;
+  background: #1f0b0b;
+}
+.error-details summary {
+  cursor: pointer;
+  color: #fecaca;
+}

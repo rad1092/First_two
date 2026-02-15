@@ -95,6 +95,9 @@ def run_ollama(model: str, prompt: str) -> str:
 
 
 class Handler(BaseHTTPRequestHandler):
+    def _error_payload(self, message: str, detail: str | None = None) -> dict[str, str]:
+        return {"error": message, "error_detail": detail or message}
+
     def _send_json(self, data: dict, status: int = HTTPStatus.OK) -> None:
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
@@ -125,7 +128,7 @@ class Handler(BaseHTTPRequestHandler):
         if route.startswith('/api/charts/jobs/'):
             job_id = route.split('/')[-1].strip()
             if not job_id:
-                return self._send_json({'error': 'job id is required'}, HTTPStatus.BAD_REQUEST)
+                return self._send_json(self._error_payload('job id is required'), HTTPStatus.BAD_REQUEST)
             return self._send_json(get_chart_job(job_id))
         self.send_error(HTTPStatus.NOT_FOUND)
 
@@ -136,14 +139,14 @@ class Handler(BaseHTTPRequestHandler):
         try:
             payload = json.loads(raw.decode("utf-8")) if raw else {}
         except json.JSONDecodeError:
-            return self._send_json({"error": "invalid json"}, HTTPStatus.BAD_REQUEST)
+            return self._send_json(self._error_payload('invalid json'), HTTPStatus.BAD_REQUEST)
 
         try:
             if route == "/api/analyze":
                 csv_text = str(payload.get("csv_text", ""))
                 question = str(payload.get("question", "")).strip()
                 if not csv_text.strip():
-                    return self._send_json({"error": "csv_text is required"}, HTTPStatus.BAD_REQUEST)
+                    return self._send_json(self._error_payload('csv_text is required'), HTTPStatus.BAD_REQUEST)
                 if not question:
                     question = "이 데이터의 핵심 인사이트를 알려줘"
                 result = build_analysis_payload_from_csv_text(csv_text, question)
@@ -156,7 +159,7 @@ class Handler(BaseHTTPRequestHandler):
                 group_column = str(payload.get("group_column", "")).strip() or None
                 target_column = str(payload.get("target_column", "")).strip() or None
                 if not isinstance(files, list) or not files:
-                    return self._send_json({"error": "files is required"}, HTTPStatus.BAD_REQUEST)
+                    return self._send_json(self._error_payload('files is required'), HTTPStatus.BAD_REQUEST)
 
                 with tempfile.TemporaryDirectory(prefix="bitnet_multi_") as td:
                     tmp_paths = []
@@ -174,7 +177,7 @@ class Handler(BaseHTTPRequestHandler):
                         tmp_paths.append(path)
 
                     if not tmp_paths:
-                        return self._send_json({"error": "valid csv_text files are required"}, HTTPStatus.BAD_REQUEST)
+                        return self._send_json(self._error_payload('valid csv_text files are required'), HTTPStatus.BAD_REQUEST)
 
                     result = analyze_multiple_csv(
                         tmp_paths,
@@ -194,12 +197,12 @@ class Handler(BaseHTTPRequestHandler):
                 model = str(payload.get("model", "")).strip()
                 prompt = str(payload.get("prompt", "")).strip()
                 if not model or not prompt:
-                    return self._send_json({"error": "model and prompt are required"}, HTTPStatus.BAD_REQUEST)
+                    return self._send_json(self._error_payload('model and prompt are required'), HTTPStatus.BAD_REQUEST)
                 answer = run_ollama(model, prompt)
                 return self._send_json({"answer": answer})
 
         except Exception as exc:  # runtime surface for UI
-            return self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return self._send_json(self._error_payload('request failed', str(exc)), HTTPStatus.BAD_REQUEST)
 
         self.send_error(HTTPStatus.NOT_FOUND)
 
