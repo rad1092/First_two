@@ -76,6 +76,7 @@ function getInputTypeForFile(file) {
   if (selected !== 'auto') return selected;
   const name = String(file?.name || '').toLowerCase();
   if (name.endsWith('.xlsx') || name.endsWith('.xls')) return 'excel';
+  if (name.endsWith('.pdf') || name.endsWith('.docx') || name.endsWith('.pptx')) return 'document';
   return 'csv';
 }
 
@@ -92,21 +93,41 @@ async function readFileAsBase64(file) {
 
 async function fetchSheetsForFile(file) {
   const inputType = getInputTypeForFile(file);
-  if (inputType !== 'excel') {
-    appState.detectedInputType = 'csv';
-    if (UI.sheetSelect) UI.sheetSelect.innerHTML = '<option value="">CSV는 시트 선택이 필요 없습니다.</option>';
+  const fileBase64 = await readFileAsBase64(file);
+
+  if (inputType === 'excel') {
+    const res = await postJson('/api/sheets', {
+      input_type: 'excel',
+      source_name: file.name,
+      file_base64: fileBase64,
+    }, 'Excel 시트 목록 조회');
+    appState.detectedInputType = 'excel';
+    const names = Array.isArray(res.sheet_names) ? res.sheet_names : [];
+    const opts = ['<option value="">기본 시트(첫 번째)</option>', ...names.map((n) => `<option value="${n}">${n}</option>`)].join('');
+    if (UI.sheetSelect) UI.sheetSelect.innerHTML = opts;
     return;
   }
-  const fileBase64 = await readFileAsBase64(file);
-  const res = await postJson('/api/sheets', {
-    input_type: 'excel',
-    source_name: file.name,
-    file_base64: fileBase64,
-  }, 'Excel 시트 목록 조회');
-  appState.detectedInputType = 'excel';
-  const names = Array.isArray(res.sheet_names) ? res.sheet_names : [];
-  const opts = ['<option value="">기본 시트(첫 번째)</option>', ...names.map((n) => `<option value="${n}">${n}</option>`)].join('');
-  if (UI.sheetSelect) UI.sheetSelect.innerHTML = opts;
+
+  if (inputType === 'document') {
+    const res = await postJson('/api/document/extract', {
+      input_type: 'document',
+      source_name: file.name,
+      file_base64: fileBase64,
+    }, '문서 표 추출');
+    appState.detectedInputType = 'document';
+    const tables = Array.isArray(res.tables) ? res.tables : [];
+    const opts = tables.length
+      ? tables.map((tb, idx) => `<option value="${idx}">${tb.table_id} | ${tb.row_count}x${tb.column_count} | conf=${tb.confidence}</option>`).join('')
+      : '<option value="">추출된 표 없음</option>';
+    if (UI.sheetSelect) UI.sheetSelect.innerHTML = opts;
+    if (!tables.length && res.failure_detail) {
+      showError('문서 표 추출 실패', res.failure_detail);
+    }
+    return;
+  }
+
+  appState.detectedInputType = 'csv';
+  if (UI.sheetSelect) UI.sheetSelect.innerHTML = '<option value="">CSV는 시트/테이블 선택이 필요 없습니다.</option>';
 }
 
 async function buildAnalyzeRequest() {
@@ -134,6 +155,17 @@ async function buildAnalyzeRequest() {
     };
   }
 
+  if (inputType === 'document') {
+    const base64 = await readFileAsBase64(file);
+    return {
+      input_type: 'document',
+      source_name: file.name,
+      file_base64: base64,
+      table_index: Number(UI.sheetSelect?.value || 0),
+      question,
+    };
+  }
+
   return {
     input_type: 'csv',
     source_name: file.name,
@@ -152,6 +184,13 @@ async function buildMultiPayloadFiles(files) {
         input_type: 'excel',
         file_base64: await readFileAsBase64(f),
         sheet_name: UI.sheetSelect?.value || '',
+      });
+    } else if (inputType === 'document') {
+      payloadFiles.push({
+        name: f.name,
+        input_type: 'document',
+        file_base64: await readFileAsBase64(f),
+        table_index: Number(UI.sheetSelect?.value || 0),
       });
     } else {
       payloadFiles.push({

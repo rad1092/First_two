@@ -20,6 +20,7 @@ import zipfile
 from urllib.parse import urlparse
 
 from .analysis import build_analysis_payload_from_request
+from .document_extract import extract_document_tables_from_base64, table_to_analysis_request
 from .multi_csv import analyze_multiple_csv
 from .visualize import create_multi_charts
 
@@ -39,6 +40,17 @@ def _coerce_csv_text_from_file_payload(file_payload: dict[str, Any]) -> tuple[st
     input_type = str(file_payload.get('input_type', 'csv') or 'csv').strip().lower()
     source_name = str(file_payload.get('name', '<inline_csv>'))
     meta: dict[str, Any] = {'source_name': source_name, 'input_type': input_type}
+
+    if input_type == 'document':
+        raw_b64 = str(file_payload.get('file_base64', '')).strip()
+        if not raw_b64:
+            raise ValueError('document file_base64 is required')
+        extract_result = extract_document_tables_from_base64(raw_b64, source_name)
+        table_index = int(file_payload.get('table_index', 0) or 0)
+        request_payload = table_to_analysis_request(extract_result, table_index)
+        normalized_text = str(request_payload.get('normalized_csv_text', ''))
+        meta.update(request_payload.get('meta', {}))
+        return source_name, normalized_text, meta
 
     if input_type == 'excel':
         raw_b64 = str(file_payload.get('file_base64', '')).strip()
@@ -321,6 +333,17 @@ class Handler(BaseHTTPRequestHandler):
                 sheet_names = _extract_sheet_names(file_base64)
                 return self._send_json({'sheet_names': sheet_names})
 
+            if route == '/api/document/extract':
+                input_type = str(payload.get('input_type', 'document') or 'document').strip().lower()
+                if input_type != 'document':
+                    return self._send_json(self._error_payload('input_type must be document', input_type=input_type, preprocessing_stage='input_validation'), HTTPStatus.BAD_REQUEST)
+                file_base64 = str(payload.get('file_base64', '')).strip()
+                source_name = str(payload.get('source_name', 'document') or 'document')
+                if not file_base64:
+                    return self._send_json(self._error_payload('document file is required', 'file_base64 is empty', input_type='document', preprocessing_stage='input_validation'), HTTPStatus.BAD_REQUEST)
+                result = extract_document_tables_from_base64(file_base64, source_name)
+                return self._send_json(result.to_dict())
+
             if route == "/api/analyze":
                 question = str(payload.get("question", "")).strip()
                 if not question:
@@ -336,6 +359,25 @@ class Handler(BaseHTTPRequestHandler):
                         str(payload.get("sheet_name", "") or "").strip() or None,
                     )
                     meta = {**meta, "sheet_name": str(payload.get("sheet_name", "") or "").strip() or "<first_sheet>"}
+                elif input_type == "document":
+                    extract_result = extract_document_tables_from_base64(
+                        str(payload.get("file_base64", "") or ""),
+                        source_name,
+                    )
+                    if not extract_result.tables:
+                        return self._send_json(
+                            self._error_payload(
+                                "document table extraction failed",
+                                extract_result.failure_detail or extract_result.failure_reason or "표 추출 실패",
+                                input_type="document",
+                                preprocessing_stage="table_extraction",
+                            ),
+                            HTTPStatus.BAD_REQUEST,
+                        )
+                    selected_index = int(payload.get("table_index", 0) or 0)
+                    request_payload_for_table = table_to_analysis_request(extract_result, selected_index)
+                    normalized_csv_text = request_payload_for_table["normalized_csv_text"]
+                    meta = {**meta, **request_payload_for_table.get("meta", {})}
 
                 request_payload = {
                     "input_type": input_type,

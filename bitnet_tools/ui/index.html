@@ -28,16 +28,17 @@
           <option value="auto">자동 감지</option>
           <option value="csv">CSV</option>
           <option value="excel">Excel (.xlsx/.xls)</option>
+          <option value="document">문서 (.pdf/.docx/.pptx)</option>
         </select>
 
         <label>CSV/Excel 파일</label>
-        <input id="csvFile" type="file" accept=".csv,text/csv,.xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
-        <label>Excel 시트(선택)</label>
+        <input id="csvFile" type="file" accept=".csv,text/csv,.xlsx,.xls,.pdf,.docx,.pptx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation" />
+        <label>Excel 시트 / 문서 테이블(선택)</label>
         <div class="row">
           <select id="sheetSelect">
             <option value="">기본 시트(첫 번째)</option>
           </select>
-          <button id="refreshSheetsBtn" type="button">시트 목록 새로고침</button>
+          <button id="refreshSheetsBtn" type="button">목록 새로고침</button>
         </div>
         <textarea id="csvText" rows="8" placeholder="또는 CSV 내용을 직접 붙여넣기"></textarea>
 
@@ -97,7 +98,7 @@
 
       <section class="panel advanced-only" id="multiPanel">
         <h2>고급: 멀티 CSV/Excel 분석</h2>
-        <input id="multiCsvFiles" type="file" multiple accept=".csv,text/csv,.xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+        <input id="multiCsvFiles" type="file" multiple accept=".csv,text/csv,.xlsx,.xls,.pdf,.docx,.pptx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation" />
         <div class="row">
           <div>
             <label>그룹 컬럼(선택)</label>
