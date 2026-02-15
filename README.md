@@ -1,376 +1,120 @@
-# BitNet 로컬 분석 환경 시작 가이드 (개인용)
+# BitNet Tools
 
-> 목표: **BitNet 중심(웬만하면 BitNet만 사용)**으로 로컬 LLM 환경을 빠르게 띄우고,
-> CSV/텍스트 요약 + 간단한 질의응답 + 분석 보조까지 바로 시작할 수 있게 구성합니다.
-
----
-
-## 0) 현재 완성도 빠른 진단
-
-현 시점 기준 기능 완성도(실사용 관점): **약 88%**
-
-- 완료
-  - CSV 기초 요약(행/열/결측/숫자 통계)
-  - BitNet용 프롬프트 자동 생성
-  - 단일 CSV + 다중 CSV CLI 분석(`report`, `multi-analyze`)
-  - 컬럼별 결측/고유/상위값 비율 산출
-  - 다중 CSV 분석용 코드 가이드(판다스 예시 코드 자동 생성)
-  - 인사이트 룰 엔진(결측/이상치/드리프트 경고)
-  - 파일 프로파일 캐시(.bitnet_cache)로 재분석 가속
-  - 다중 CSV 자동 시각화 차트 생성(histogram/boxplot/top bar/scatter/missing-bar, matplotlib 설치 시)
-  - 브라우저 UI(`bitnet-analyze ui`) / 웹 대시보드 / Windows 데스크톱 UI
-
-- 남은 과제 (우선순위)
-  - **P1 UI 개선**: 화면 2모드(빠른 시작/고급), 상태·에러 표준화, 대시보드 필터/드릴다운 강화
-  - **P1 분석 품질**: 날짜 파싱 포맷 확장(`YYYYMMDD`, `DD-MM-YYYY` 등), 결과 `schema_version` 도입
-  - **P1 구조화**: UI 스크립트 모듈화(상태관리/API/렌더링/이벤트), 공통 fetch/에러 포맷 정리
-  - **P2 성능**: 대형 JSON incremental 렌더링, 차트 비동기 job UX(queued/running/done/failed, 재시도)
-  - **P2 입력 확장**: Excel(`.xlsx`, `.xls`) 시트 선택·CSV 정규화
-  - **P3 파일 확장**: 문서 포맷(`.pdf`, `.docx`, `.pptx`) 표 추출 + 실패 시 CSV fallback
-
-### 처리 규모 가이드
-
-- 단일/다중 CSV 분석(`analyze`, `multi-analyze`)은 스트리밍 누적 통계를 사용해 수십 MB 수준까지 안정 처리하도록 개선됨
-- `multi-analyze`는 파일 단위 캐시(`.bitnet_cache`)를 사용해 재실행 성능을 개선
-- 차트 생성(`--charts-dir`)은 matplotlib 기반이며 샘플링 기반 차트 템플릿으로 메모리 사용을 제한해 대형 파일 대응성을 개선
-
-### 파일 붙여넣기 분석 가능 범위
-
-가능:
-- Python 코드, 로그, 에러 메시지, 설정 파일(`.toml`, `.json`, `.yaml`), CSV 샘플
-- 모듈 구조/의존성/리팩터링 포인트/버그 후보 분석
-- 여러 파일을 순차로 붙여주면 아키텍처 단위 진단
-
-제약:
-- 실제 실행이 필요한 문제(환경/권한/OS 특이 이슈)는 붙여넣기만으로 100% 재현 불가
-- 초대형 파일은 핵심 구간(에러 스택, 함수 단위) 분할 제공 권장
-
-권장 붙여넣기 순서:
-1. 에러 로그 전문
-2. 관련 함수/클래스
-3. 실행 명령어
-4. `pyproject.toml` 또는 의존성 목록
-
-### 업로드 입력 지원 범위 / 제약 / 준비 권장사항
-
-#### 지원 범위
-- CSV: `input_type=csv` 또는 파일 업로드 시 기본 경로로 처리
-- Excel: `.xlsx`(OOXML) 지원, 시트 목록 조회(`/api/sheets`) + 시트 선택 후 CSV 정규화
-- 문서: `.pdf`, `.docx`, `.pptx` 표 추출(`/api/document/extract`) 후 선택 테이블 분석
-
-#### 제약
-- Excel은 현재 `.xlsx`만 지원(`.xls` 바이너리 포맷 미지원)
-- Excel 시트는 **첫 행 헤더 필수**, 빈 헤더/중복 헤더는 에러 처리
-- 비어 있는 시트(실데이터 없음)는 분석 불가
-- PDF는 암호화/스캔 이미지 기반 문서에서 표 추출이 실패할 수 있음
-- 문서 표 추출 실패 시 `/api/analyze`는 `error` + `error_detail` + `preprocessing_stage=table_extraction` 포맷으로 반환
-
-#### 권장 파일 준비 방법
-- CSV/Excel 공통
-  - 첫 행을 명확한 컬럼명(중복/공백 없음)으로 구성
-  - 숫자 컬럼은 단위/통화를 가능한 일관되게 정리
-  - 완전 빈 행/열은 사전 제거
-- Excel
-  - 분석 대상 시트를 분리(요약 시트/원본 시트 혼합 최소화)
-  - merged cell/복잡 서식보다 표 형태(행-열) 우선
-- 문서(PDF/Word/PPT)
-  - 스캔본보다 텍스트 기반 원본 사용 권장
-  - 테이블 경계(|, 탭, 명확한 셀 구분)가 보존된 원본이 유리
-  - 추출 신뢰도가 낮거나 실패하면 CSV로 변환 후 업로드 경로를 권장
+BitNet/Ollama 기반의 **로컬 데이터 분석 보조 도구**입니다.  
+CSV를 중심으로 Excel/문서(PDF, DOCX, PPTX) 입력을 정규화해 요약·비교·리포트·시각화·질문 기반 분석 파이프라인으로 연결합니다.
 
 ---
 
-## 1) 이번 문서에서 바로 할 일
+## 저장소 점검 결과 요약
 
-1. Ollama 설치 및 실행
-2. BitNet 모델 1개 Pull
-3. CLI로 동작 확인
-4. Open WebUI 연결
-5. JupyterLab에서 CSV 분석 + BitNet 해석 워크플로우 구성
-6. (Windows) 더블클릭으로 데스크톱 앱 실행
+### 1) 현재 제공 기능
 
----
+- CLI 분석 명령
+  - `analyze`: 단일 파일 분석 payload + (옵션) Ollama 즉시 질의
+  - `report`: Markdown 보고서 생성
+  - `multi-analyze`: 다중 CSV 통합 분석(JSON/MD)
+  - `compare`: 전/후 CSV 분포 비교
+  - `doctor`: 로컬 환경 진단
+  - `ui`, `desktop`: 웹 UI/데스크톱 UI 실행
+- 입력 전처리
+  - CSV 직접 입력
+  - Excel(`.xlsx`) base64 로드, 시트 선택, CSV 정규화
+  - 문서(`.pdf`, `.docx`, `.pptx`) 표 추출 후 분석 요청 변환
+- 분석 코어
+  - 결측/타입/기초 수치 통계(평균/최소/최대) 생성
+  - 다중 CSV 프로파일 집계 및 캐시(`.bitnet_cache`) 활용
+  - 룰 기반 이상 징후 설명 후보 생성(결측 집중/편중/단위 불일치/최근 급변)
+  - 지리 좌표 유효성 검사 및 의심 레코드 산출
+- 시각화/추천
+  - 다중 CSV 차트 생성(환경에 따라 matplotlib 기반)
+  - 질문/스키마 기반 차트 타입 추천
+- API/UI
+  - 로컬 HTTP 서버에서 분석/전처리/비교/플래너 관련 엔드포인트 제공
+  - 브라우저 UI 정적 파일 제공
 
-## 2) 사전 확인 (10~20분)
+### 2) 어떤 분석이 가능한가
 
-- OS 확인
-- RAM/VRAM 확인
-- 디스크 여유 최소 30GB
-- 목표를 “최고 성능”보다 “안정 동작”으로 설정
+- 데이터 품질 분석: 결측, 타입 일관성, 지배 카테고리 편향, 단위 혼재
+- 기술통계 분석: 컬럼별 수치 통계, 그룹 합계/랭킹/샘플 추출
+- 다중 파일 분석: 여러 CSV의 프로파일 비교/통합 리포트 생성
+- 전후 비교 분석: before/after CSV 분포 차이 확인
+- 지리 데이터 검증: 위경도 범위/이상치 플래깅
+- 문서/엑셀 표 기반 분석: 원본을 CSV 형태로 정규화한 뒤 동일 파이프라인 적용
 
-권장 기준:
-- RAM 16GB 이하: BitNet의 작은 파라미터 모델 우선
-- RAM 32GB 이상: 컨텍스트/토큰 여유를 조금 더 확대
-- GPU가 없으면 컨텍스트를 짧게 유지(2048~4096)
+### 3) 자연어 처리(NLP) 수준 진단
 
----
+이 프로젝트의 NLP는 **경량 규칙 기반 + LLM 연동 보조형** 수준입니다.
 
-## 3) Step-by-step 시작 절차 (BitNet 우선)
-
-### Step 1. Ollama 설치
-```bash
-curl -fsSL https://ollama.com/install.sh | sh
-ollama serve
-```
-
-### Step 2. BitNet 모델 다운로드
-
-아래 `bitnet-model-tag`는 실제 사용 가능한 태그로 바꿔 입력하세요.
-
-```bash
-ollama pull <bitnet-model-tag>
-```
-
-예:
-```bash
-ollama pull bitnet:latest
-```
-
-> 참고: 태그명은 시점/배포처에 따라 달라질 수 있으니 `ollama search bitnet` 또는 배포 페이지의 최신 태그를 우선 확인하세요.
-
-### Step 3. CLI 동작 확인
-```bash
-ollama run <bitnet-model-tag> "다음 CSV 컬럼 설명을 5줄로 요약해줘: user_id, order_cnt, total_amount"
-```
-
-### Step 4. Open WebUI 연결 (Docker)
-```bash
-docker run -d \
-  --name open-webui \
-  -p 3000:8080 \
-  -e OLLAMA_BASE_URL=http://host.docker.internal:11434 \
-  -v open-webui:/app/backend/data \
-  --restart unless-stopped \
-  ghcr.io/open-webui/open-webui:main
-```
-
-접속: `http://localhost:3000`
-
-### Step 5. JupyterLab 분석 환경
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
-pip install jupyterlab pandas matplotlib
-jupyter lab
-```
-
-### Step 6. Windows 원클릭 실행
-
-터미널 없이 사용하려면 아래 중 하나를 사용하세요.
-
-- 방법 A: 프로젝트 루트에서 `BitNet_Desktop_Start.bat` 더블클릭
-- 방법 B: 설치 후 `bitnet-desktop` 실행
-- 방법 C: `bitnet-analyze desktop` 실행
-
-`BitNet_Desktop_Start.bat`는 다음을 자동 수행합니다.
-- `.venv` 생성(없으면)
-- 패키지 설치(`pip install -e .`)
-- `pythonw`로 GUI 실행(콘솔창 없이)
-
-데스크톱 UI 내 `환경진단` 버튼으로 Ollama 설치/실행/모델 보유 여부를 즉시 확인할 수 있습니다.
-또한 CSV 파일을 선택하지 않아도 CSV 텍스트를 바로 붙여넣어 분석할 수 있습니다.
-(다중 CSV 동시 분석은 현재 CLI `multi-analyze`에서 먼저 지원합니다.)
-
----
-
-## 4) BitNet 기본 설정값 (안정성 우선)
-
-- temperature: `0.2 ~ 0.5`
-- top_p: `0.9`
-- max_tokens: `512 ~ 1024`
-- context: `2048 ~ 4096` (메모리 여유 있으면 확대)
-
-시스템 프롬프트 권장:
-- 모르면 모른다고 답하기
-- 추정/사실 분리하기
-- 표/수치 해석 시 근거 컬럼명을 명시하기
-
----
-
-## 5) 데이터 분석 최소 워크플로우 (BitNet only)
-
-1. CSV 로딩
-2. 결측/타입/기초통계 계산
-3. 계산 결과 기반 프롬프트 생성
-4. BitNet 실행으로 인사이트/한계/추가 데이터 제안 받기
-
-예시 프롬프트:
-
-```text
-너는 데이터 분석 보조자야.
-아래 통계를 바탕으로
-1) 핵심 인사이트 3개
-2) 이상치 의심 포인트 2개
-3) 추가로 필요한 데이터 3개
-를 간결하게 제시해줘.
-```
-
-응답 형식 템플릿(권장):
-- 핵심요약
-- 근거
+- 강점
+  - 한/영 키워드 기반 의도 파싱(`top N`, `샘플 N`, `임계값`, `전후` 등)
+  - 스키마 시맨틱 별칭 매핑(질문 용어 ↔ 실제 컬럼명)
+  - 분석 계획(플랜) 자동 구성 후 실행으로 질문-분석 연결
+  - 최종 설명은 Ollama 모델(BitNet 등)로 확장 가능
 - 한계
-- 다음행동
+  - 복잡 문장 의미 해석, 다중 의도 분해, 문맥 추론은 제한적
+  - 모델 없이 동작하는 NLP는 정규식/사전 중심이라 표현 변화에 취약
+  - 고급 NLU(개체/관계 추출, 추론 체인, 다중 턴 대화 메모리)는 별도 구현 없음
+
+> 결론: “완전한 자연어 이해 엔진”보다는, **정형 데이터 분석 자동화에 최적화된 실무형 NLP 어댑터**에 가깝습니다.
 
 ---
 
-## 6) 운영 안정화 체크리스트
-
-- [ ] BitNet 모델 1~2개만 유지
-- [ ] 프롬프트 템플릿은 검증된 것만 유지
-- [ ] 느릴 때: context/max_tokens 감소
-- [ ] 품질 흔들릴 때: temperature 하향
-- [ ] 메모리 부족 시: 더 작은 BitNet 모델로 전환
-
-백업:
-- Open WebUI 데이터 볼륨 주기적 백업
-- Jupyter 노트북/원본 CSV 분리 보관
-
----
-
-
-## 오프라인 번들 설치/검증
+## 빠른 시작
 
 ```bash
-# 온라인 환경에서 번들 생성
-./scripts/prepare_online_bundle.sh
-
-# 오프라인 환경 설치(사전 검증 포함)
-./offline_install.sh
-# Windows
-./offline_install.ps1
-```
-
-`offline_install.(sh|ps1)`는 설치 전에 다음을 검사합니다.
-- SHA256 해시 일치
-- 허용목록(allowlist) 포함 여부
-- 라이선스 허용목록(allowed_licenses) 준수
-
-위반 항목이 하나라도 있으면 설치를 중단하고 사유를 출력합니다.
-
-`bitnet-analyze doctor --model <tag>` 출력에는 `offline_readiness`가 포함되며,
-모델/의존성/필수 파일/번들 디렉터리 준비 상태를 확인할 수 있습니다.
-
----
-
-## 7) 지금 바로 실행할 최소 커맨드 모음
-
-```bash
-# 0) 프로젝트 설치
 python -m venv .venv
 source .venv/bin/activate
 pip install -e .
-
-# 1) Ollama
-curl -fsSL https://ollama.com/install.sh | sh
-ollama serve
-
-# 2) BitNet pull
-ollama pull <bitnet-model-tag>
-
-# 3) CSV 분석 payload 생성
-bitnet-analyze analyze sample.csv --question "샘플 매출 데이터를 요약해줘" --out payload.json
-
-# 4) 웹 UI 실행
-bitnet-analyze ui --host 127.0.0.1 --port 8765
-
-# 5) 데스크톱 UI 실행
-bitnet-analyze desktop
-
-# 6) 환경 진단
-bitnet-analyze doctor --model bitnet:latest
-
-# 7) 마크다운 분석 리포트 저장
-bitnet-analyze report sample.csv --question "핵심 요약" --out analysis_report.md
-
-# 8) 다중 CSV 통합 분석(JSON+MD+코드가이드)
-bitnet-analyze multi-analyze a.csv b.csv c.csv --question "컬럼별 비율과 지역별 차이 분석" --group-column 시도명 --target-column 세차유형 --charts-dir charts --out-json multi.json --out-report multi.md
-
-# 캐시 없이 재분석
-bitnet-analyze multi-analyze a.csv b.csv --question "비교" --no-cache --out-json fresh.json --out-report fresh.md
 ```
 
----
-
-## API 입력 계약 요약 (`/api/analyze`)
-
-웹 API는 확장 가능한 공통 입력 스키마를 사용합니다.
-
-### 요청 필드
-
-- `input_type`: `csv` | `excel` | `document`
-- `source_name`: 원본 이름(파일명/시트명 등)
-- `normalized_csv_text`: 전처리 완료된 CSV 텍스트
-- `meta`: 입력별 부가 메타데이터(dict)
-- `question`: 분석 질문
-
-하위호환: 기존 `csv_text`만 보내도 내부에서 `normalized_csv_text`로 승격되어 처리됩니다.
-
-### 요청 예시 (신규)
-
-```json
-{
-  "input_type": "excel",
-  "source_name": "sales.xlsx#Sheet1",
-  "normalized_csv_text": "region,amount\nseoul,100\nbusan,120\n",
-  "meta": {
-    "sheet": "Sheet1",
-    "uploaded_by": "analyst"
-  },
-  "question": "지역별 매출을 요약해줘"
-}
-```
-
-### 요청 예시 (레거시 CSV)
-
-```json
-{
-  "csv_text": "region,amount\nseoul,100\n",
-  "question": "핵심 인사이트를 알려줘"
-}
-```
-
-### 정상 응답 예시 (일부)
-
-```json
-{
-  "csv_path": "sales.xlsx#Sheet1",
-  "question": "지역별 매출을 요약해줘",
-  "summary": {"row_count": 2, "column_count": 2},
-  "input": {
-    "input_type": "excel",
-    "source_name": "sales.xlsx#Sheet1",
-    "normalized_csv_text": "region,amount\nseoul,100\nbusan,120\n",
-    "meta": {"sheet": "Sheet1", "uploaded_by": "analyst"},
-    "preprocessing_steps": ["use_normalized_csv_text"]
-  }
-}
-```
-
-### 오류 응답 예시
-
-```json
-{
-  "error": "analyze payload invalid",
-  "error_detail": "normalized_csv_text is required",
-  "input_type": "document",
-  "preprocessing_stage": "input_validation"
-}
-```
-
----
-
-## 8) GitHub 반영(적용) 절차
-
-로컬에서 문서/설정을 수정한 뒤 아래 순서로 GitHub에 반영합니다.
+CLI 도움말:
 
 ```bash
-git add README.md
-git commit -m "docs: update BitNet setup guide"
-git push origin <branch-name>
+python -m bitnet_tools.cli --help
 ```
 
-PR 생성 시 체크 포인트:
-- 변경 목적(왜 바꿨는지) 1~2줄
-- 실행/검증한 명령어
-- 사용자 관점에서 달라진 점(BitNet 우선 흐름, 실행 순서 명확화 등)
+주요 예시:
+
+```bash
+# 단일 분석 payload
+bitnet-analyze analyze sample.csv --question "핵심 지표 요약" --out payload.json
+
+# Markdown 보고서
+bitnet-analyze report sample.csv --question "핵심 요약" --out analysis_report.md
+
+# 다중 CSV 분석
+bitnet-analyze multi-analyze a.csv b.csv --question "지역별 차이" --out-json multi.json --out-report multi.md
+
+# 전/후 비교
+bitnet-analyze compare --before before.csv --after after.csv --out compare.json
+
+# 웹 UI
+bitnet-analyze ui --host 127.0.0.1 --port 8765
+
+# 환경 진단
+bitnet-analyze doctor --model bitnet:latest
+```
+
+---
+
+## 입력 지원 범위
+
+- `csv`: 텍스트/파일 기반 직접 분석
+- `excel`: `.xlsx` 지원(시트 선택 후 CSV 정규화)
+- `document`: `.pdf`, `.docx`, `.pptx`에서 표 추출 후 분석
+
+제약:
+- `.xls`(구형 바이너리 엑셀) 미지원
+- 표/헤더 품질이 낮은 문서는 추출 실패 가능
+- 대형 파일/복잡 문서는 전처리 단계에서 시간 증가 가능
+
+---
+
+## 테스트 상태
+
+현재 테스트 스위트 기준, 핵심 기능(분석/비교/플래너/문서추출/웹/UI 계약/오프라인 번들)이 통과하는 상태입니다.
+
+```bash
+pytest -q
+```
+
