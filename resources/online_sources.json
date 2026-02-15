@@ -1,16 +1,33 @@
 {
-  "tool_packages": [
-    "matplotlib",
-    "pandas",
-    "jupyterlab",
-    "pytest",
-    "playwright"
+  "wheelhouse": [
+    {"name": "matplotlib", "version": "3.9.2"},
+    {"name": "pandas", "version": "2.2.3"},
+    {"name": "jupyterlab", "version": "4.2.5"},
+    {"name": "pytest", "version": "8.3.3"},
+    {"name": "playwright", "version": "1.47.0"}
   ],
-  "reference_urls": [
-    "https://www.w3.org/WAI/WCAG22/quickref/",
-    "https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA",
-    "https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API",
-    "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl",
-    "https://web.dev/articles/loading-patterns"
+  "model_assets": [
+    {
+      "name": "ollama_install_script",
+      "url": "https://ollama.com/install.sh",
+      "official_base": "https://ollama.com/"
+    }
+  ],
+  "runtime_assets": [
+    {
+      "name": "wcag_quickref",
+      "url": "https://www.w3.org/WAI/WCAG22/quickref/",
+      "official_base": "https://www.w3.org/WAI/"
+    },
+    {
+      "name": "mdn_aria",
+      "url": "https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA",
+      "official_base": "https://developer.mozilla.org/en-US/docs/Web/"
+    },
+    {
+      "name": "mdn_fetch_api",
+      "url": "https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API",
+      "official_base": "https://developer.mozilla.org/en-US/docs/Web/"
+    }
   ]
 }
