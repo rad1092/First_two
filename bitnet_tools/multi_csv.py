@@ -5,6 +5,7 @@ import hashlib
 import json
 import math
 import random
+from concurrent.futures import ThreadPoolExecutor
 from collections import Counter, defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -342,30 +343,56 @@ def _generate_insights(files: list[dict[str, Any]], schema_drift: dict[str, Any]
     return insights[:30]
 
 
+def _load_or_profile_file(
+    path: Path,
+    group_column: str | None,
+    target_column: str | None,
+    use_cache: bool,
+) -> dict[str, Any]:
+    profiled = _load_cached_profile(path, group_column, target_column) if use_cache else None
+    if profiled is None:
+        profiled = _profile_csv_stream(path, group_column=group_column, target_column=target_column)
+        if use_cache:
+            _save_cached_profile(path, group_column, target_column, profiled)
+    return profiled
+
+
 def analyze_multiple_csv(
     csv_paths: list[Path],
     question: str,
     group_column: str | None = None,
     target_column: str | None = None,
     use_cache: bool = True,
+    max_workers: int | None = None,
 ) -> dict[str, Any]:
     if not csv_paths:
         raise ValueError('at least one CSV path is required')
-
-    files: list[dict[str, Any]] = []
-    all_columns: list[set[str]] = []
-    total_rows = 0
 
     for path in csv_paths:
         if not path.exists():
             raise FileNotFoundError(f'CSV file not found: {path}')
 
-        profiled = _load_cached_profile(path, group_column, target_column) if use_cache else None
-        if profiled is None:
-            profiled = _profile_csv_stream(path, group_column=group_column, target_column=target_column)
-            if use_cache:
-                _save_cached_profile(path, group_column, target_column, profiled)
+    worker_count = max_workers if (max_workers is not None and max_workers > 0) else min(4, len(csv_paths))
 
+    if worker_count == 1 or len(csv_paths) == 1:
+        profiled_list = [
+            _load_or_profile_file(path, group_column, target_column, use_cache)
+            for path in csv_paths
+        ]
+    else:
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            profiled_list = list(
+                executor.map(
+                    lambda p: _load_or_profile_file(p, group_column, target_column, use_cache),
+                    csv_paths,
+                )
+            )
+
+    files: list[dict[str, Any]] = []
+    all_columns: list[set[str]] = []
+    total_rows = 0
+
+    for path, profiled in zip(csv_paths, profiled_list):
         total_rows += profiled['summary']['row_count']
         all_columns.append(set(profiled['summary']['columns']))
         files.append(

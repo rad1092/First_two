@@ -140,3 +140,15 @@ def test_multi_csv_top_values_capped_marker(monkeypatch, tmp_path):
 
     assert prof["top_values_capped"] is True
     assert any(x["value"] == "__OTHER__" for x in prof["top_values"])
+
+
+def test_multi_csv_with_parallel_workers(tmp_path):
+    p1 = tmp_path / "a.csv"
+    p2 = tmp_path / "b.csv"
+    p1.write_text("city,val\nseoul,1\n", encoding="utf-8")
+    p2.write_text("city,val\nbusan,2\n", encoding="utf-8")
+
+    result = analyze_multiple_csv([p1, p2], "병렬", max_workers=2)
+
+    assert result["file_count"] == 2
+    assert [f["path"] for f in result["files"]] == [str(p1), str(p2)]

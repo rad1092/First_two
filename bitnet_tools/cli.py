@@ -80,6 +80,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Optional directory to save visualization charts",
     )
     multi_parser.add_argument("--no-cache", action="store_true", help="Disable file profile cache")
+    multi_parser.add_argument("--workers", type=int, default=None, help="Optional worker count for parallel file profiling")
 
     report_parser = subparsers.add_parser("report", help="Build markdown summary report from CSV")
     report_parser.add_argument("csv", type=Path, help="Input CSV path")
@@ -126,6 +127,7 @@ def main(argv: list[str] | None = None) -> int:
             group_column=args.group_column,
             target_column=args.target_column,
             use_cache=not args.no_cache,
+            max_workers=args.workers,
         )
         if args.charts_dir is not None:
             try:
