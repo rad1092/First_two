@@ -220,3 +220,14 @@ def test_normalize_analysis_input_rejects_unsupported_type():
 
     with pytest.raises(ValueError):
         normalize_analysis_input({"input_type": "json", "normalized_csv_text": "a\n1\n"})
+
+
+def test_build_analysis_payload_normalizes_question_by_schema_semantics():
+    payload = build_analysis_payload_from_csv_text(
+        "sigungu_col,service_type_col\n강남,셀프\n",
+        "시군구 별 세차유형 통계를 보여줘",
+    )
+
+    assert payload["original_question"] == "시군구 별 세차유형 통계를 보여줘"
+    assert payload["question"] == "sigungu_col 별 service_type_col 통계를 보여줘"
+    assert any(m["status"] == "success" for m in payload["schema_semantics_mappings"])

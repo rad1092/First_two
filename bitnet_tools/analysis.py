@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .schema_semantics import load_schema_semantics, normalize_question_entities
+
 
 VALID_INPUT_TYPES = {"csv", "excel", "document"}
 
@@ -229,13 +231,16 @@ def build_analysis_payload_from_normalized_input(
 
     columns = [str(c) for c in reader.fieldnames]
     summary = summarize_reader(reader, columns)
+    planner = normalize_question_entities(question, columns, load_schema_semantics())
     csv_path = csv_path_override or normalized_input.source_name
 
     return {
         "csv_path": csv_path,
-        "question": question,
+        "question": planner["normalized_question"],
+        "original_question": question,
         "summary": summary.to_dict(),
-        "prompt": build_prompt(summary, question),
+        "prompt": build_prompt(summary, planner["normalized_question"]),
+        "schema_semantics_mappings": planner["mappings"],
         "input": normalized_input.to_dict(),
     }
 
