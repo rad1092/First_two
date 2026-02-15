@@ -4,6 +4,7 @@ import platform
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 from typing import Any
 
 
@@ -22,6 +23,7 @@ def collect_environment(model: str | None = None) -> dict[str, Any]:
 
     ollama_path = shutil.which("ollama")
     if not ollama_path:
+        info["offline_readiness"] = _collect_offline_readiness([], model=model)
         info["diagnosis"] = "ollama not found in PATH"
         return info
 
@@ -47,5 +49,42 @@ def collect_environment(model: str | None = None) -> dict[str, Any]:
             info["model_available"] = any(m.startswith(model) for m in models)
     else:
         info["ollama_list_error"] = err or out or "failed to query ollama"
+        models = []
+
+    info["offline_readiness"] = _collect_offline_readiness(models, model=model)
 
     return info
+
+
+def _collect_offline_readiness(models: list[str], model: str | None = None) -> dict[str, Any]:
+    root_dir = Path(__file__).resolve().parent.parent
+    bundle_dir = root_dir / ".offline_bundle"
+    required_files = {
+        "offline_install_sh": root_dir / "offline_install.sh",
+        "offline_install_ps1": root_dir / "offline_install.ps1",
+        "offline_policy": bundle_dir / "meta" / "offline_policy.json",
+        "deferred_manifest": root_dir / "deferred_install_manifest.json",
+    }
+
+    files = {name: path.exists() for name, path in required_files.items()}
+    dependencies = {
+        "python": True,
+        "pip": shutil.which("pip") is not None,
+    }
+
+    model_state: dict[str, Any] = {
+        "requested": model,
+        "available": None,
+        "installed_models": models,
+    }
+    if model:
+        model_state["available"] = any(m.startswith(model) for m in models)
+
+    return {
+        "bundle_dir": str(bundle_dir),
+        "bundle_dir_exists": bundle_dir.exists(),
+        "dependencies": dependencies,
+        "files": files,
+        "model": model_state,
+        "ready": bundle_dir.exists() and all(files.values()) and all(dependencies.values()) and (model_state["available"] is not False),
+    }
