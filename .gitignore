@@ -5,3 +5,7 @@ __pycache__/
 # Test/runtime caches
 .pytest_cache/
 .bitnet_cache/
+
+.offline_bundle/
+
+.online_assets/
