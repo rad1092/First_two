@@ -228,6 +228,31 @@ jupyter lab
 
 ---
 
+
+## 오프라인 번들 설치/검증
+
+```bash
+# 온라인 환경에서 번들 생성
+./scripts/prepare_online_bundle.sh
+
+# 오프라인 환경 설치(사전 검증 포함)
+./offline_install.sh
+# Windows
+./offline_install.ps1
+```
+
+`offline_install.(sh|ps1)`는 설치 전에 다음을 검사합니다.
+- SHA256 해시 일치
+- 허용목록(allowlist) 포함 여부
+- 라이선스 허용목록(allowed_licenses) 준수
+
+위반 항목이 하나라도 있으면 설치를 중단하고 사유를 출력합니다.
+
+`bitnet-analyze doctor --model <tag>` 출력에는 `offline_readiness`가 포함되며,
+모델/의존성/필수 파일/번들 디렉터리 준비 상태를 확인할 수 있습니다.
+
+---
+
 ## 7) 지금 바로 실행할 최소 커맨드 모음
 
 ```bash
