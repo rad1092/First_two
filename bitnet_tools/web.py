@@ -27,6 +27,7 @@ from .geo import flag_geo_suspects, validate_lat_lon
 from .multi_csv import analyze_multiple_csv
 from .planner import build_plan, execute_plan_from_csv_text, parse_question_to_intent
 from .visualize import create_multi_charts
+from .viz_recommender import recommend_chart_types
 
 
 UI_DIR = Path(__file__).parent / "ui"
@@ -397,7 +398,35 @@ def get_preprocess_job(job_id: str) -> dict[str, Any]:
             }
         return {'job_id': job_id, 'status': status}
 
-def _run_chart_job(job_id: str, files: list[dict[str, str]]) -> dict[str, Any]:
+
+
+def _build_chart_fallback(csv_paths: list[Path]) -> dict[str, Any]:
+    fallback: dict[str, Any] = {}
+    for csv_path in csv_paths:
+        try:
+            with csv_path.open("r", encoding="utf-8-sig", newline="") as f:
+                reader = csv.DictReader(f)
+                headers = [str(h) for h in (reader.fieldnames or [])]
+                rows = []
+                for idx, row in enumerate(reader):
+                    if idx >= 5:
+                        break
+                    rows.append({k: v for k, v in row.items()})
+            fallback[str(csv_path)] = {
+                'headers': headers,
+                'preview_rows': rows,
+                'summary': f'chart generation failed; returned {len(rows)} preview rows',
+            }
+        except Exception as exc:
+            fallback[str(csv_path)] = {
+                'headers': [],
+                'preview_rows': [],
+                'summary': f'chart generation failed and fallback preview failed: {exc}',
+            }
+    return fallback
+
+
+def _run_chart_job(job_id: str, files: list[dict[str, str]], selected_chart_types: list[str] | None = None) -> dict[str, Any]:
     CHART_JOB_DIR.mkdir(parents=True, exist_ok=True)
     job_input_dir = CHART_JOB_DIR / f"{job_id}_input"
     out_dir = CHART_JOB_DIR / f"{job_id}_charts"
@@ -416,21 +445,45 @@ def _run_chart_job(job_id: str, files: list[dict[str, str]]) -> dict[str, Any]:
     if not csv_paths:
         raise ValueError('valid csv_text files are required')
 
-    charts = create_multi_charts(csv_paths, out_dir)
-    return {
-        'job_id': job_id,
-        'status': 'done',
-        'chart_count': sum(len(v) for v in charts.values()),
-        'charts': charts,
-        'output_dir': str(out_dir),
-    }
+    try:
+        try:
+            charts = create_multi_charts(csv_paths, out_dir, selected_chart_types=selected_chart_types)
+        except TypeError:
+            charts = create_multi_charts(csv_paths, out_dir)
+        chart_count = sum(len(v) for v in charts.values())
+        if chart_count == 0:
+            return {
+                'job_id': job_id,
+                'status': 'done',
+                'chart_count': 0,
+                'charts': charts,
+                'output_dir': str(out_dir),
+                'fallback': _build_chart_fallback(csv_paths),
+            }
+        return {
+            'job_id': job_id,
+            'status': 'done',
+            'chart_count': chart_count,
+            'charts': charts,
+            'output_dir': str(out_dir),
+        }
+    except Exception as exc:
+        return {
+            'job_id': job_id,
+            'status': 'done',
+            'chart_count': 0,
+            'charts': {},
+            'output_dir': str(out_dir),
+            'fallback': _build_chart_fallback(csv_paths),
+            'fallback_reason': str(exc),
+        }
 
 
-def submit_chart_job(files: list[dict[str, str]]) -> str:
+def submit_chart_job(files: list[dict[str, str]], selected_chart_types: list[str] | None = None) -> str:
     if not isinstance(files, list) or not files:
         raise ValueError('files is required')
     job_id = uuid.uuid4().hex
-    future = _CHART_EXECUTOR.submit(_run_chart_job, job_id, files)
+    future = _CHART_EXECUTOR.submit(_run_chart_job, job_id, files, selected_chart_types)
     with _CHART_LOCK:
         _CHART_JOBS[job_id] = future
     return job_id
@@ -722,10 +775,20 @@ class Handler(BaseHTTPRequestHandler):
                     )
                     return self._send_json(result)
 
+            if route == '/api/viz/recommend':
+                question = str(payload.get('question', '') or '').strip()
+                return self._send_json(recommend_chart_types(question))
+
             if route == "/api/charts/jobs":
                 files = payload.get('files', [])
-                job_id = submit_chart_job(files)
-                return self._send_json({'job_id': job_id, 'status': 'queued'}, HTTPStatus.ACCEPTED)
+                selected_chart_types = payload.get('selected_chart_types', None)
+                if selected_chart_types is not None and not isinstance(selected_chart_types, list):
+                    return self._send_json(self._error_payload('selected_chart_types must be a list'), HTTPStatus.BAD_REQUEST)
+                if not selected_chart_types:
+                    question = str(payload.get('question', '') or '').strip()
+                    selected_chart_types = recommend_chart_types(question).get('recommended_chart_types', [])
+                job_id = submit_chart_job(files, selected_chart_types=selected_chart_types)
+                return self._send_json({'job_id': job_id, 'status': 'queued', 'selected_chart_types': selected_chart_types}, HTTPStatus.ACCEPTED)
 
             if route == "/api/run":
                 model = str(payload.get("model", "")).strip()

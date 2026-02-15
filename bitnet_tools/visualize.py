@@ -7,6 +7,9 @@ from pathlib import Path
 from typing import Any
 
 
+SUPPORTED_CHART_TYPES = {"histogram", "boxplot", "missing", "bar", "scatter", "line"}
+
+
 SAMPLE_CAP = 20000
 TOP_K = 10
 
@@ -103,6 +106,7 @@ def create_file_charts(
     out_dir: Path,
     max_numeric: int = 3,
     max_categorical: int = 2,
+    selected_chart_types: list[str] | None = None,
 ) -> list[str]:
     plt = _ensure_matplotlib()
 
@@ -116,6 +120,9 @@ def create_file_charts(
 
     artifacts: list[str] = []
     stem = _safe_stem(csv_path)
+    selected = {c.strip().lower() for c in (selected_chart_types or []) if c}
+    if not selected:
+        selected = set(SUPPORTED_CHART_TYPES)
 
     for col in numeric_cols:
         values: list[float] = profiles[col]["values"]
@@ -123,29 +130,31 @@ def create_file_charts(
         if not values:
             continue
 
-        fig = plt.figure(figsize=(7, 4))
-        plt.hist(values, bins=20)
-        plt.title(f"{stem} - {col} histogram(sample)")
-        plt.xlabel(col)
-        plt.ylabel("count")
-        plt.tight_layout()
-        out = out_dir / f"{stem}_{col}_hist.png"
-        fig.savefig(out)
-        plt.close(fig)
-        artifacts.append(str(out))
+        if "histogram" in selected:
+            fig = plt.figure(figsize=(7, 4))
+            plt.hist(values, bins=20)
+            plt.title(f"{stem} - {col} histogram(sample)")
+            plt.xlabel(col)
+            plt.ylabel("count")
+            plt.tight_layout()
+            out = out_dir / f"{stem}_{col}_hist.png"
+            fig.savefig(out)
+            plt.close(fig)
+            artifacts.append(str(out))
 
-        fig = plt.figure(figsize=(5, 4))
-        plt.boxplot(values, vert=True)
-        plt.title(f"{stem} - {col} boxplot(sample)")
-        plt.ylabel(col)
-        plt.tight_layout()
-        out = out_dir / f"{stem}_{col}_box.png"
-        fig.savefig(out)
-        plt.close(fig)
-        artifacts.append(str(out))
+        if "boxplot" in selected:
+            fig = plt.figure(figsize=(5, 4))
+            plt.boxplot(values, vert=True)
+            plt.title(f"{stem} - {col} boxplot(sample)")
+            plt.ylabel(col)
+            plt.tight_layout()
+            out = out_dir / f"{stem}_{col}_box.png"
+            fig.savefig(out)
+            plt.close(fig)
+            artifacts.append(str(out))
 
         total = profiles[col]["seen"] + missing
-        if total > 0:
+        if total > 0 and "missing" in selected:
             fig = plt.figure(figsize=(5, 3))
             plt.bar(["non_missing", "missing"], [profiles[col]["seen"], missing])
             plt.title(f"{stem} - {col} missing overview")
@@ -162,17 +171,18 @@ def create_file_charts(
 
         labels = [x[0] for x in items]
         counts = [x[1] for x in items]
-        fig = plt.figure(figsize=(8, 4))
-        plt.bar(range(len(labels)), counts)
-        plt.xticks(range(len(labels)), labels, rotation=30, ha="right")
-        plt.title(f"{stem} - {col} top values")
-        plt.tight_layout()
-        out = out_dir / f"{stem}_{col}_top.png"
-        fig.savefig(out)
-        plt.close(fig)
-        artifacts.append(str(out))
+        if "bar" in selected:
+            fig = plt.figure(figsize=(8, 4))
+            plt.bar(range(len(labels)), counts)
+            plt.xticks(range(len(labels)), labels, rotation=30, ha="right")
+            plt.title(f"{stem} - {col} top values")
+            plt.tight_layout()
+            out = out_dir / f"{stem}_{col}_top.png"
+            fig.savefig(out)
+            plt.close(fig)
+            artifacts.append(str(out))
 
-    if len(numeric_cols) >= 2:
+    if len(numeric_cols) >= 2 and ("scatter" in selected or "line" in selected):
         x_col, y_col = numeric_cols[0], numeric_cols[1]
         xs: list[float] = []
         ys: list[float] = []
@@ -192,7 +202,7 @@ def create_file_charts(
                     seen += 1
                     _reservoir_pair(xs, ys, x, y, seen, SAMPLE_CAP)
 
-        if xs and ys:
+        if xs and ys and "scatter" in selected:
             fig = plt.figure(figsize=(6, 5))
             plt.scatter(xs, ys, alpha=0.6, s=12)
             plt.title(f"{stem} - {x_col} vs {y_col} scatter(sample)")
@@ -204,11 +214,28 @@ def create_file_charts(
             plt.close(fig)
             artifacts.append(str(out))
 
+        if xs and ys and "line" in selected:
+            pairs = sorted(zip(xs, ys), key=lambda pair: pair[0])
+            fig = plt.figure(figsize=(6, 4))
+            plt.plot([p[0] for p in pairs], [p[1] for p in pairs], linewidth=1.3)
+            plt.title(f"{stem} - {x_col} vs {y_col} line(sample)")
+            plt.xlabel(x_col)
+            plt.ylabel(y_col)
+            plt.tight_layout()
+            out = out_dir / f"{stem}_{x_col}_{y_col}_line.png"
+            fig.savefig(out)
+            plt.close(fig)
+            artifacts.append(str(out))
+
     return artifacts
 
 
-def create_multi_charts(csv_paths: list[Path], out_dir: Path) -> dict[str, Any]:
+def create_multi_charts(
+    csv_paths: list[Path],
+    out_dir: Path,
+    selected_chart_types: list[str] | None = None,
+) -> dict[str, Any]:
     results: dict[str, Any] = {}
     for p in csv_paths:
-        results[str(p)] = create_file_charts(p, out_dir)
+        results[str(p)] = create_file_charts(p, out_dir, selected_chart_types=selected_chart_types)
     return results

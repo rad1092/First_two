@@ -5,6 +5,8 @@ const UI = {
   refreshSheetsBtn: document.getElementById('refreshSheetsBtn'),
   csvText: document.getElementById('csvText'),
   question: document.getElementById('question'),
+  showVizOptionsBtn: document.getElementById('showVizOptionsBtn'),
+  vizRecommendation: document.getElementById('vizRecommendation'),
   intent: document.getElementById('intent'),
   intentActions: document.getElementById('intentActions'),
   model: document.getElementById('model'),
@@ -86,6 +88,7 @@ const appState = {
   uploadedFile: null,
   detectedInputType: 'csv',
   candidateTables: [],
+  vizRecommendation: null,
 };
 
 const CONFIDENCE_THRESHOLD_DEFAULT = 0.7;
@@ -684,6 +687,32 @@ function setPreprocessStatusText(text) {
   if (UI.preprocessStatus) UI.preprocessStatus.textContent = text;
 }
 
+function renderVizRecommendation(rec) {
+  appState.vizRecommendation = rec || null;
+  if (!UI.vizRecommendation) return;
+  if (!rec) {
+    UI.vizRecommendation.textContent = '추천 시각화 옵션이 여기에 표시됩니다.';
+    return;
+  }
+  const charts = Array.isArray(rec.recommended_chart_types) ? rec.recommended_chart_types.join(', ') : '-';
+  UI.vizRecommendation.textContent = `의도: ${rec.intent || '-'}\n추천 차트: ${charts}\n추천 사유: ${rec.reason || '-'}`;
+}
+
+async function fetchVizRecommendation() {
+  clearError();
+  const question = (UI.question?.value || '').trim();
+  try {
+    const rec = await postJson('/api/viz/recommend', { question }, '시각화 추천');
+    renderVizRecommendation(rec);
+    setStatus('시각화 추천을 확인했습니다.');
+    return rec;
+  } catch (err) {
+    showError(err.userMessage || '시각화 추천 실패', err.detail || '');
+    setStatus('시각화 추천 실패');
+    return null;
+  }
+}
+
 function stopPreprocessPolling() {
   if (appState.preprocessJob.pollTimer) {
     clearInterval(appState.preprocessJob.pollTimer);
@@ -779,7 +808,13 @@ async function pollChartJobOnce() {
     if (result.status === 'done') {
       stopChartPolling();
       UI.retryChartsJobBtn.disabled = true;
-      setStatus('차트 작업 완료');
+      if (result.fallback) {
+        const fallbackText = JSON.stringify(result.fallback, null, 2);
+        setChartsJobStatusText(`job=${result.job_id} status=done (fallback)\nreason=${result.fallback_reason || 'chart_generation_failed'}\n${fallbackText}`);
+        setStatus('차트 생성 실패로 표/요약 fallback을 제공합니다.');
+      } else {
+        setStatus('차트 작업 완료');
+      }
     } else if (result.status === 'failed') {
       stopChartPolling();
       UI.retryChartsJobBtn.disabled = false;
@@ -820,7 +855,9 @@ async function startChartsJob() {
     const payloadFiles = await buildMultiPayloadFiles(files);
     appState.chartJob.files = payloadFiles;
 
-    const queued = await postJson('/api/charts/jobs', { files: payloadFiles }, '차트 작업 생성');
+    const rec = appState.vizRecommendation || await fetchVizRecommendation();
+    const selectedChartTypes = Array.isArray(rec?.recommended_chart_types) ? rec.recommended_chart_types : [];
+    const queued = await postJson('/api/charts/jobs', { files: payloadFiles, question: UI.question?.value || '', selected_chart_types: selectedChartTypes }, '차트 작업 생성');
     appState.chartJob.id = queued.job_id;
     appState.chartJob.status = queued.status;
     UI.retryChartsJobBtn.disabled = true;
@@ -844,7 +881,10 @@ async function retryChartsJob() {
   clearError();
   toggleBusy(true);
   try {
-    const queued = await postJson('/api/charts/jobs', { files: appState.chartJob.files }, '차트 작업 재시도');
+    const selectedChartTypes = Array.isArray(appState.vizRecommendation?.recommended_chart_types)
+      ? appState.vizRecommendation.recommended_chart_types
+      : [];
+    const queued = await postJson('/api/charts/jobs', { files: appState.chartJob.files, question: UI.question?.value || '', selected_chart_types: selectedChartTypes }, '차트 작업 재시도');
     appState.chartJob.id = queued.job_id;
     appState.chartJob.status = queued.status;
     UI.retryChartsJobBtn.disabled = true;
@@ -1128,6 +1168,7 @@ function bindEvents() {
 
   UI.analyzeBtn?.addEventListener('click', runByIntent);
   UI.quickAnalyzeBtn?.addEventListener('click', runByIntent);
+  UI.showVizOptionsBtn?.addEventListener('click', fetchVizRecommendation);
   UI.runBtn?.addEventListener('click', runModel);
   UI.multiAnalyzeBtn?.addEventListener('click', runMultiAnalyze);
   UI.startChartsJobBtn?.addEventListener('click', startChartsJob);
@@ -1203,6 +1244,7 @@ function init() {
   if (UI.retryPreprocessBtn) UI.retryPreprocessBtn.disabled = true;
   setChartsJobStatusText('차트 작업 대기 중');
   setPreprocessStatusText('입력 전처리 대기 중');
+  renderVizRecommendation(null);
 }
 
 init();
