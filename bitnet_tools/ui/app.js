@@ -8,6 +8,14 @@ const summary = document.getElementById('summary');
 const prompt = document.getElementById('prompt');
 const answer = document.getElementById('answer');
 
+const multiCsvFiles = document.getElementById('multiCsvFiles');
+const groupColumn = document.getElementById('groupColumn');
+const targetColumn = document.getElementById('targetColumn');
+const multiAnalyzeBtn = document.getElementById('multiAnalyzeBtn');
+const dashboardJson = document.getElementById('dashboardJson');
+const dashboardCards = document.getElementById('dashboardCards');
+const dashboardInsights = document.getElementById('dashboardInsights');
+
 let latestPrompt = '';
 
 csvFile.addEventListener('change', async (e) => {
@@ -67,4 +75,70 @@ runBtn.addEventListener('click', async () => {
   });
   const data = await res.json();
   answer.textContent = res.ok ? data.answer : (data.error || 'error');
+});
+
+document.getElementById('renderDashboardBtn').addEventListener('click', () => {
+  dashboardCards.innerHTML = '';
+  dashboardInsights.textContent = '';
+
+  let parsed;
+  try {
+    parsed = JSON.parse(dashboardJson.value || '{}');
+  } catch {
+    dashboardInsights.textContent = 'JSON 형식이 올바르지 않습니다.';
+    return;
+  }
+
+  const cardItems = [
+    ['파일 수', parsed.file_count ?? '-'],
+    ['총 행 수', parsed.total_row_count ?? '-'],
+    ['공통 컬럼 수', (parsed.shared_columns || []).length],
+    ['인사이트 수', (parsed.insights || []).length],
+  ];
+
+  cardItems.forEach(([k, v]) => {
+    const div = document.createElement('div');
+    div.className = 'card';
+    div.innerHTML = `<strong>${k}</strong><span>${v}</span>`;
+    dashboardCards.appendChild(div);
+  });
+
+  const insights = parsed.insights || [];
+  dashboardInsights.textContent = insights.length
+    ? insights.map((x, i) => `${i + 1}. ${x}`).join('\n')
+    : '인사이트 항목이 없습니다.';
+});
+
+
+multiAnalyzeBtn.addEventListener('click', async () => {
+  const files = [...(multiCsvFiles.files || [])];
+  if (!files.length) {
+    dashboardInsights.textContent = '멀티 CSV 파일을 먼저 선택하세요.';
+    return;
+  }
+
+  dashboardInsights.textContent = '멀티 분석 중...';
+  const payloadFiles = [];
+  for (const f of files) {
+    payloadFiles.push({ name: f.name, csv_text: await f.text() });
+  }
+
+  const res = await fetch('/api/multi-analyze', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      files: payloadFiles,
+      question: question.value,
+      group_column: groupColumn.value.trim(),
+      target_column: targetColumn.value.trim(),
+    }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    dashboardInsights.textContent = data.error || 'error';
+    return;
+  }
+
+  dashboardJson.value = JSON.stringify(data, null, 2);
+  document.getElementById('renderDashboardBtn').click();
 });
