@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .analysis import DataSummary, build_analysis_payload, build_analysis_payload_from_request, build_markdown_report
 from .doctor import collect_environment
+from .document_extract import extract_document_tables, table_to_analysis_request
 from .multi_csv import analyze_multiple_csv, build_multi_csv_markdown, result_to_json
 from .visualize import create_multi_charts
 from .web import serve
@@ -32,7 +33,7 @@ def _build_parser() -> argparse.ArgumentParser:
     analyze_parser = subparsers.add_parser(
         "analyze", help="Build analysis payload from a CSV file"
     )
-    analyze_parser.add_argument("csv", type=Path, help="Input CSV path")
+    analyze_parser.add_argument("csv", type=Path, help="Input data path (csv/pdf/docx/pptx)")
     analyze_parser.add_argument("--question", required=True, help="Analysis question")
     analyze_parser.add_argument(
         "--model",
@@ -44,6 +45,17 @@ def _build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path("analysis_payload.json"),
         help="Where to store generated payload JSON",
+    )
+    analyze_parser.add_argument(
+        "--table-index",
+        type=int,
+        default=0,
+        help="Document table index to use when input is pdf/docx/pptx",
+    )
+    analyze_parser.add_argument(
+        "--list-tables",
+        action="store_true",
+        help="List extracted document tables and exit",
     )
 
     ui_parser = subparsers.add_parser("ui", help="Run local web UI")
@@ -150,12 +162,23 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "analyze":
-        request_payload = {
-            "input_type": "csv",
-            "source_name": args.csv.name,
-            "normalized_csv_text": args.csv.read_text(encoding="utf-8"),
-            "meta": {"csv_path": str(args.csv)},
-        }
+        suffix = args.csv.suffix.lower()
+        if suffix in {".pdf", ".docx", ".pptx"}:
+            extract_result = extract_document_tables(args.csv)
+            if args.list_tables:
+                print(json.dumps(extract_result.to_dict(), ensure_ascii=False, indent=2))
+                return 0
+            if not extract_result.tables:
+                raise ValueError(extract_result.failure_detail or extract_result.failure_reason or "표 추출 실패")
+            request_payload = table_to_analysis_request(extract_result, args.table_index)
+            request_payload["meta"] = {**request_payload.get("meta", {}), "document_path": str(args.csv)}
+        else:
+            request_payload = {
+                "input_type": "csv",
+                "source_name": args.csv.name,
+                "normalized_csv_text": args.csv.read_text(encoding="utf-8"),
+                "meta": {"csv_path": str(args.csv)},
+            }
         payload = build_analysis_payload_from_request(request_payload, args.question, csv_path_override=str(args.csv))
         args.out.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"

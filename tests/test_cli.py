@@ -1,4 +1,6 @@
 from pathlib import Path
+import io
+import zipfile
 
 from bitnet_tools import cli
 
@@ -235,3 +237,39 @@ def test_cli_multi_analyze_workers_flag(tmp_path, monkeypatch):
 
     assert code == 0
     assert called["max_workers"] == 3
+
+
+def _write_docx(path: Path) -> None:
+    xml = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:tbl>
+<w:tr><w:tc><w:p><w:r><w:t>c1</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>c2</w:t></w:r></w:p></w:tc></w:tr>
+<w:tr><w:tc><w:p><w:r><w:t>a</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>1</w:t></w:r></w:p></w:tc></w:tr>
+</w:tbl></w:body></w:document>"""
+    mem = io.BytesIO()
+    with zipfile.ZipFile(mem, 'w') as zf:
+        zf.writestr('word/document.xml', xml)
+    path.write_bytes(mem.getvalue())
+
+
+def test_cli_analyze_document_list_tables(tmp_path, capsys):
+    doc_path = tmp_path / 'sample.docx'
+    _write_docx(doc_path)
+
+    code = cli.main(['analyze', str(doc_path), '--question', '요약', '--list-tables'])
+
+    assert code == 0
+    out = capsys.readouterr().out
+    assert 'docx_table_1' in out
+
+
+def test_cli_analyze_document_to_payload(tmp_path):
+    doc_path = tmp_path / 'sample.docx'
+    out_path = tmp_path / 'out.json'
+    _write_docx(doc_path)
+
+    code = cli.main(['analyze', str(doc_path), '--question', '요약', '--out', str(out_path)])
+
+    assert code == 0
+    body = out_path.read_text(encoding='utf-8')
+    assert '"input_type": "document"' in body
+    assert '"table_id": "docx_table_1"' in body
