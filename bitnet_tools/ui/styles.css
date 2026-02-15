@@ -25,7 +25,7 @@ body {
   padding: 14px;
   margin: 12px 0;
 }
-.row { display: flex; justify-content: space-between; gap: 12px; align-items: end; }
+.row { display: flex; justify-content: space-between; gap: 12px; align-items: end; flex-wrap: wrap; }
 label { display: block; margin-bottom: 8px; color: var(--muted); }
 textarea, input {
   width: 100%;
@@ -56,3 +56,20 @@ pre {
   max-height: 320px;
   overflow: auto;
 }
+.cards {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+}
+.card {
+  background: #0b1220;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.card strong { color: var(--muted); font-size: 12px; }
+.card span { font-size: 18px; font-weight: 700; }
