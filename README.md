@@ -7,7 +7,7 @@
 
 ## 0) 현재 완성도 빠른 진단
 
-현 시점 기준 기능 완성도(실사용 관점): **약 92%**
+현 시점 기준 기능 완성도(실사용 관점): **약 88%**
 
 - 완료
   - CSV 기초 요약(행/열/결측/숫자 통계)
@@ -18,12 +18,15 @@
   - 인사이트 룰 엔진(결측/이상치/드리프트 경고)
   - 파일 프로파일 캐시(.bitnet_cache)로 재분석 가속
   - 다중 CSV 자동 시각화 차트 생성(histogram/boxplot/top bar/scatter/missing-bar, matplotlib 설치 시)
-  - 브라우저 UI(`bitnet-analyze ui`)
-  - 웹 UI 대시보드(JSON 붙여넣기 기반 KPI/인사이트 뷰)
-  - **윈도우 데스크톱 UI(`bitnet-analyze desktop`, `BitNet_Desktop_Start.bat`)**
-- 남은 과제
-  - 대시보드 필터/드릴다운 고도화
-  - 차트 렌더링 백엔드 비동기 작업 큐(대형 배치용)
+  - 브라우저 UI(`bitnet-analyze ui`) / 웹 대시보드 / Windows 데스크톱 UI
+
+- 남은 과제 (우선순위)
+  - **P1 UI 개선**: 화면 2모드(빠른 시작/고급), 상태·에러 표준화, 대시보드 필터/드릴다운 강화
+  - **P1 분석 품질**: 날짜 파싱 포맷 확장(`YYYYMMDD`, `DD-MM-YYYY` 등), 결과 `schema_version` 도입
+  - **P1 구조화**: UI 스크립트 모듈화(상태관리/API/렌더링/이벤트), 공통 fetch/에러 포맷 정리
+  - **P2 성능**: 대형 JSON incremental 렌더링, 차트 비동기 job UX(queued/running/done/failed, 재시도)
+  - **P2 입력 확장**: Excel(`.xlsx`, `.xls`) 시트 선택·CSV 정규화
+  - **P3 파일 확장**: 문서 포맷(`.pdf`, `.docx`, `.pptx`) 표 추출 + 실패 시 CSV fallback
 
 ### 처리 규모 가이드
 

@@ -9,6 +9,7 @@ const summary = document.getElementById('summary');
 const prompt = document.getElementById('prompt');
 const answer = document.getElementById('answer');
 const statusBox = document.getElementById('statusBox');
+const modeGuide = document.getElementById('modeGuide');
 
 const multiCsvFiles = document.getElementById('multiCsvFiles');
 const groupColumn = document.getElementById('groupColumn');
@@ -24,6 +25,22 @@ function setStatus(message) {
   if (statusBox) statusBox.textContent = message;
 }
 
+function renderModeGuide(mode) {
+  if (!modeGuide) return;
+  const steps = mode === 'quick'
+    ? [
+        '1) CSV 파일을 선택하거나 CSV 텍스트를 붙여넣기',
+        '2) 요청 문장을 확인(칩 버튼으로 빠르게 선택 가능)',
+        '3) "바로 분석" 클릭 후 요약 결과 확인',
+      ]
+    : [
+        '1) 기본 분석을 먼저 실행해 프롬프트 생성',
+        '2) 필요 시 모델 태그 입력 후 BitNet 실행',
+        '3) 멀티 CSV/대시보드 고급 기능 활용',
+      ];
+  modeGuide.innerHTML = steps.map((step) => `<li>${step}</li>`).join('');
+}
+
 function setMode(mode) {
   const advancedOnly = document.querySelectorAll('.advanced-only');
   advancedOnly.forEach((el) => {
@@ -35,10 +52,12 @@ function setMode(mode) {
   });
 
   if (mode === 'quick') {
-    setStatus('빠른 시작 모드: 파일 입력 후 "바로 분석"을 눌러주세요.');
+    setStatus('빠른 시작: 입력 → 요청 확인 → 바로 분석');
   } else {
-    setStatus('고급 모드: 모델 실행, 멀티 분석, 대시보드를 사용할 수 있습니다.');
+    setStatus('고급 모드: 모델 실행/멀티 분석/대시보드를 사용할 수 있습니다.');
   }
+
+  renderModeGuide(mode);
 }
 
 document.querySelectorAll('.mode-btn').forEach((btn) => {
@@ -57,6 +76,7 @@ if (csvFile) {
 document.querySelectorAll('.chip').forEach((chip) => {
   chip.addEventListener('click', () => {
     question.value = chip.dataset.q;
+    if (quickAnalyzeBtn) quickAnalyzeBtn.focus();
   });
 });
 
