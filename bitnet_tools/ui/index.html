@@ -72,6 +72,10 @@
       <section class="panel">
         <h2>3) 실행 상태</h2>
         <pre id="statusBox" aria-live="polite">대기 중</pre>
+        <div class="actions">
+          <button id="retryPreprocessBtn" type="button" class="advanced-only" disabled>전처리 실패 재시도</button>
+        </div>
+        <pre id="preprocessStatus" aria-live="polite">입력 전처리 대기 중</pre>
         <div id="errorUser" class="error-user" aria-live="polite"></div>
         <details id="errorDetails" class="error-details">
           <summary>상세 오류 보기</summary>

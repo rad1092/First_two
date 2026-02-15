@@ -40,6 +40,48 @@ def test_get_chart_job_not_found():
     assert result["status"] == "not_found"
 
 
+def test_submit_and_get_preprocess_job_done(monkeypatch, tmp_path):
+    monkeypatch.setattr(web, "PREPROCESS_JOB_DIR", tmp_path / "prep")
+
+    job_id = web.submit_preprocess_job({
+        "input_type": "csv",
+        "name": "sample.csv",
+        "normalized_csv_text": "a,b\n1,2\n",
+        "question": "요약",
+    })
+
+    result = web.get_preprocess_job(job_id)
+    for _ in range(30):
+        if result["status"] != "queued" and result["status"] != "running":
+            break
+        time.sleep(0.01)
+        result = web.get_preprocess_job(job_id)
+
+    assert result["status"] == "done"
+    assert result["input_type"] == "csv"
+    assert "normalized_csv" in result["artifacts"]
+
+
+def test_preprocess_job_failed_reason(monkeypatch, tmp_path):
+    monkeypatch.setattr(web, "PREPROCESS_JOB_DIR", tmp_path / "prep")
+
+    def broken(payload):
+        raise ValueError("memory allocation failed")
+
+    monkeypatch.setattr(web, "_run_preprocess_job", lambda *_args, **_kwargs: broken(None))
+    job_id = web.submit_preprocess_job({"input_type": "csv", "normalized_csv_text": "x\n1\n"})
+
+    result = web.get_preprocess_job(job_id)
+    for _ in range(30):
+        if result["status"] != "queued" and result["status"] != "running":
+            break
+        time.sleep(0.01)
+        result = web.get_preprocess_job(job_id)
+
+    assert result["status"] == "failed"
+    assert result["failure_reason"] == "memory_limit"
+
+
 def _make_docx_b64() -> str:
     xml = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:tbl>

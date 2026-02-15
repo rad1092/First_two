@@ -33,6 +33,8 @@ const UI = {
   startChartsJobBtn: document.getElementById('startChartsJobBtn'),
   retryChartsJobBtn: document.getElementById('retryChartsJobBtn'),
   chartsJobStatus: document.getElementById('chartsJobStatus'),
+  preprocessStatus: document.getElementById('preprocessStatus'),
+  retryPreprocessBtn: document.getElementById('retryPreprocessBtn'),
   dashboardJson: document.getElementById('dashboardJson'),
   dashboardCards: document.getElementById('dashboardCards'),
   dashboardInsights: document.getElementById('dashboardInsights'),
@@ -73,6 +75,7 @@ const appState = {
   latestMultiResult: null,
   structuredInsights: [],
   chartJob: { id: null, files: [], status: 'idle', pollTimer: null },
+  preprocessJob: { id: null, status: 'idle', pollTimer: null, payload: null },
   uploadedFile: null,
   detectedInputType: 'csv',
   candidateTables: [],
@@ -646,6 +649,87 @@ function setChartsJobStatusText(text) {
   if (UI.chartsJobStatus) UI.chartsJobStatus.textContent = text;
 }
 
+function setPreprocessStatusText(text) {
+  if (UI.preprocessStatus) UI.preprocessStatus.textContent = text;
+}
+
+function stopPreprocessPolling() {
+  if (appState.preprocessJob.pollTimer) {
+    clearInterval(appState.preprocessJob.pollTimer);
+    appState.preprocessJob.pollTimer = null;
+  }
+}
+
+function explainFailureReason(reason) {
+  if (reason === 'file_corruption') return '파일 손상';
+  if (reason === 'memory_limit') return '메모리 제한';
+  return '파서 오류';
+}
+
+async function runAnalyzeFromPreprocessed(result, fallbackQuestion = '') {
+  const body = {
+    input_type: result.input_type || 'csv',
+    source_name: result.source_name || '<preprocessed>',
+    normalized_csv_text: result.normalized_csv_text || '',
+    meta: result.meta || {},
+    question: result.question || fallbackQuestion || UI.question?.value || '',
+  };
+  const data = await postJson('/api/analyze', body, '분석');
+  appState.latestPrompt = data.prompt;
+  UI.summary.textContent = JSON.stringify(data.summary, null, 2);
+  renderAnalyzeAssist(data);
+  if (UI.prompt) UI.prompt.textContent = data.prompt;
+  if (UI.answer) UI.answer.textContent = '';
+  setStatus(STATUS.analyzeDone);
+}
+
+async function pollPreprocessJobOnce() {
+  if (!appState.preprocessJob.id) return;
+  try {
+    const result = await getJson(`/api/preprocess/jobs/${appState.preprocessJob.id}`, '입력 전처리 조회');
+    appState.preprocessJob.status = result.status;
+    setPreprocessStatusText(`job=${result.job_id} status=${result.status}`);
+
+    if (result.status === 'done') {
+      stopPreprocessPolling();
+      if (UI.retryPreprocessBtn) UI.retryPreprocessBtn.disabled = true;
+      setStatus('입력 전처리 완료, 분석을 이어서 실행합니다.');
+      await runAnalyzeFromPreprocessed(result, appState.preprocessJob.payload?.question || '');
+    } else if (result.status === 'failed') {
+      stopPreprocessPolling();
+      if (UI.retryPreprocessBtn) UI.retryPreprocessBtn.disabled = false;
+      const reason = explainFailureReason(result.failure_reason || 'parser_error');
+      showError(`입력 전처리가 실패했습니다. (${reason})`, result.error || 'unknown');
+      setPreprocessStatusText(`job=${result.job_id} status=failed reason=${reason}`);
+      setStatus('입력 전처리 실패');
+    }
+  } catch (err) {
+    stopPreprocessPolling();
+    if (UI.retryPreprocessBtn) UI.retryPreprocessBtn.disabled = false;
+    showError(err.userMessage || '입력 전처리 상태 조회 실패', err.detail || '');
+    setStatus('입력 전처리 상태 조회 실패');
+  }
+}
+
+function startPreprocessPolling() {
+  stopPreprocessPolling();
+  appState.preprocessJob.pollTimer = setInterval(() => {
+    pollPreprocessJobOnce();
+  }, 1200);
+}
+
+async function startPreprocessAndAnalyze(payload) {
+  appState.preprocessJob.payload = payload;
+  const queued = await postJson('/api/preprocess/jobs', payload, '입력 전처리 생성');
+  appState.preprocessJob.id = queued.job_id;
+  appState.preprocessJob.status = queued.status;
+  if (UI.retryPreprocessBtn) UI.retryPreprocessBtn.disabled = true;
+  setPreprocessStatusText(`job=${queued.job_id} status=${queued.status}`);
+  setStatus('입력 전처리 큐 등록 완료');
+  await pollPreprocessJobOnce();
+  startPreprocessPolling();
+}
+
 function stopChartPolling() {
   if (appState.chartJob.pollTimer) {
     clearInterval(appState.chartJob.pollTimer);
@@ -752,13 +836,7 @@ async function runAnalyze() {
   toggleBusy(true);
   try {
     const body = await buildAnalyzeRequest();
-    const data = await postJson('/api/analyze', body, '분석');
-    appState.latestPrompt = data.prompt;
-    UI.summary.textContent = JSON.stringify(data.summary, null, 2);
-    renderAnalyzeAssist(data);
-    if (UI.prompt) UI.prompt.textContent = data.prompt;
-    if (UI.answer) UI.answer.textContent = '';
-    setStatus(STATUS.analyzeDone);
+    await startPreprocessAndAnalyze(body);
   } catch (err) {
     UI.summary.textContent = err.userMessage || '오류';
     showError(err.userMessage || '분석 실패', err.detail || '');
@@ -942,6 +1020,22 @@ function bindEvents() {
   UI.multiAnalyzeBtn?.addEventListener('click', runMultiAnalyze);
   UI.startChartsJobBtn?.addEventListener('click', startChartsJob);
   UI.retryChartsJobBtn?.addEventListener('click', retryChartsJob);
+  UI.retryPreprocessBtn?.addEventListener('click', async () => {
+    if (!appState.preprocessJob.payload) {
+      showError('재시도할 입력 전처리 작업이 없습니다.', 'preprocessJob.payload is empty');
+      return;
+    }
+    clearError();
+    try {
+      toggleBusy(true);
+      await startPreprocessAndAnalyze(appState.preprocessJob.payload);
+    } catch (err) {
+      showError(err.userMessage || '입력 전처리 재시도 실패', err.detail || '');
+      setStatus('입력 전처리 재시도 실패');
+    } finally {
+      toggleBusy(false);
+    }
+  });
 
   UI.renderDashboardBtn?.addEventListener('click', () => {
     clearError();
@@ -993,7 +1087,9 @@ function init() {
   if (UI.filterFile) UI.filterFile.innerHTML = '<option value="전체">전체</option>';
   if (UI.filterType) UI.filterType.innerHTML = '<option value="all">전체</option>';
   if (UI.retryChartsJobBtn) UI.retryChartsJobBtn.disabled = true;
+  if (UI.retryPreprocessBtn) UI.retryPreprocessBtn.disabled = true;
   setChartsJobStatusText('차트 작업 대기 중');
+  setPreprocessStatusText('입력 전처리 대기 중');
 }
 
 init();
