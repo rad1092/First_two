@@ -5,6 +5,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import base64
 import csv
+from datetime import datetime, timedelta, timezone
 import io
 import json
 from pathlib import Path
@@ -32,6 +33,12 @@ CHART_JOB_DIR = Path('.bitnet_cache') / 'chart_jobs'
 _CHART_EXECUTOR = ThreadPoolExecutor(max_workers=2)
 _CHART_JOBS: dict[str, Future] = {}
 _CHART_LOCK = threading.Lock()
+
+PREPROCESS_JOB_DIR = Path('.bitnet_cache') / 'preprocess_jobs'
+PREPROCESS_JOB_TTL_SECONDS = 60 * 60
+_PREPROCESS_EXECUTOR = ThreadPoolExecutor(max_workers=2)
+_PREPROCESS_JOBS: dict[str, dict[str, Any]] = {}
+_PREPROCESS_LOCK = threading.Lock()
 
 
 
@@ -197,6 +204,137 @@ def _extract_sheet_names(file_base64: str) -> list[str]:
     zf, _ = _load_xlsx_from_base64(file_base64)
     return [name for name, _ in _get_xlsx_sheet_entries(zf)]
 
+
+def _classify_preprocess_error(exc: Exception) -> str:
+    msg = str(exc).lower()
+    if any(token in msg for token in ['memory', '메모리', 'out of memory', 'oom']):
+        return 'memory_limit'
+    if any(token in msg for token in ['base64', 'zip', 'corrupt', '손상', 'broken', 'unsupported excel format']):
+        return 'file_corruption'
+    return 'parser_error'
+
+
+def _cleanup_expired_preprocess_jobs() -> None:
+    now = datetime.now(timezone.utc)
+    threshold = now - timedelta(seconds=PREPROCESS_JOB_TTL_SECONDS)
+
+    with _PREPROCESS_LOCK:
+        expired = [
+            job_id
+            for job_id, rec in _PREPROCESS_JOBS.items()
+            if datetime.fromisoformat(rec.get('expire_at', now.isoformat())) <= now
+        ]
+        for job_id in expired:
+            _PREPROCESS_JOBS.pop(job_id, None)
+
+    if PREPROCESS_JOB_DIR.exists():
+        for path in PREPROCESS_JOB_DIR.iterdir():
+            if not path.is_dir():
+                continue
+            mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+            if mtime <= threshold:
+                for child in path.glob('**/*'):
+                    if child.is_file():
+                        child.unlink(missing_ok=True)
+                for child_dir in sorted(path.glob('**/*'), reverse=True):
+                    if child_dir.is_dir():
+                        child_dir.rmdir()
+                path.rmdir()
+
+
+def _run_preprocess_job(job_id: str, request_payload: dict[str, Any]) -> dict[str, Any]:
+    PREPROCESS_JOB_DIR.mkdir(parents=True, exist_ok=True)
+    job_dir = PREPROCESS_JOB_DIR / job_id
+    job_dir.mkdir(parents=True, exist_ok=True)
+
+    input_type = str(request_payload.get('input_type', 'csv') or 'csv').strip().lower()
+    question = str(request_payload.get('question', '') or '').strip()
+    source_name, normalized_csv_text, meta = _coerce_csv_text_from_file_payload(request_payload)
+
+    artifact_csv = job_dir / 'normalized.csv'
+    artifact_meta = job_dir / 'meta.json'
+    artifact_csv.write_text(normalized_csv_text, encoding='utf-8')
+    artifact_meta.write_text(
+        json.dumps({'source_name': source_name, 'input_type': input_type, 'meta': meta}, ensure_ascii=False, indent=2),
+        encoding='utf-8',
+    )
+
+    return {
+        'job_id': job_id,
+        'status': 'done',
+        'question': question,
+        'source_name': source_name,
+        'input_type': input_type,
+        'normalized_csv_text': normalized_csv_text,
+        'meta': meta,
+        'artifacts': {
+            'job_dir': str(job_dir),
+            'normalized_csv': str(artifact_csv),
+            'meta_json': str(artifact_meta),
+        },
+    }
+
+
+def _preprocess_job_worker(job_id: str, request_payload: dict[str, Any]) -> None:
+    with _PREPROCESS_LOCK:
+        rec = _PREPROCESS_JOBS.get(job_id)
+        if rec is not None:
+            rec['status'] = 'running'
+            rec['started_at'] = datetime.now(timezone.utc).isoformat()
+    try:
+        result = _run_preprocess_job(job_id, request_payload)
+        with _PREPROCESS_LOCK:
+            rec = _PREPROCESS_JOBS.get(job_id)
+            if rec is not None:
+                rec['status'] = 'done'
+                rec['result'] = result
+                rec['finished_at'] = datetime.now(timezone.utc).isoformat()
+    except Exception as exc:
+        with _PREPROCESS_LOCK:
+            rec = _PREPROCESS_JOBS.get(job_id)
+            if rec is not None:
+                rec['status'] = 'failed'
+                rec['error'] = str(exc)
+                rec['failure_reason'] = _classify_preprocess_error(exc)
+                rec['finished_at'] = datetime.now(timezone.utc).isoformat()
+
+
+def submit_preprocess_job(payload: dict[str, Any]) -> str:
+    if not isinstance(payload, dict):
+        raise ValueError('payload is required')
+    _cleanup_expired_preprocess_jobs()
+    job_id = uuid.uuid4().hex
+    now = datetime.now(timezone.utc)
+    with _PREPROCESS_LOCK:
+        _PREPROCESS_JOBS[job_id] = {
+            'job_id': job_id,
+            'status': 'queued',
+            'created_at': now.isoformat(),
+            'expire_at': (now + timedelta(seconds=PREPROCESS_JOB_TTL_SECONDS)).isoformat(),
+            'result': None,
+        }
+    _PREPROCESS_EXECUTOR.submit(_preprocess_job_worker, job_id, payload)
+    return job_id
+
+
+def get_preprocess_job(job_id: str) -> dict[str, Any]:
+    _cleanup_expired_preprocess_jobs()
+    with _PREPROCESS_LOCK:
+        rec = _PREPROCESS_JOBS.get(job_id)
+        if rec is None:
+            return {'job_id': job_id, 'status': 'not_found'}
+        status = rec.get('status', 'queued')
+        if status == 'done' and isinstance(rec.get('result'), dict):
+            return rec['result']
+        if status == 'failed':
+            return {
+                'job_id': job_id,
+                'status': 'failed',
+                'error': rec.get('error', 'unknown error'),
+                'failure_reason': rec.get('failure_reason', 'parser_error'),
+            }
+        return {'job_id': job_id, 'status': status}
+
 def _run_chart_job(job_id: str, files: list[dict[str, str]]) -> dict[str, Any]:
     CHART_JOB_DIR.mkdir(parents=True, exist_ok=True)
     job_input_dir = CHART_JOB_DIR / f"{job_id}_input"
@@ -311,6 +449,11 @@ class Handler(BaseHTTPRequestHandler):
             if not job_id:
                 return self._send_json(self._error_payload('job id is required'), HTTPStatus.BAD_REQUEST)
             return self._send_json(get_chart_job(job_id))
+        if route.startswith('/api/preprocess/jobs/'):
+            job_id = route.split('/')[-1].strip()
+            if not job_id:
+                return self._send_json(self._error_payload('job id is required'), HTTPStatus.BAD_REQUEST)
+            return self._send_json(get_preprocess_job(job_id))
         self.send_error(HTTPStatus.NOT_FOUND)
 
     def do_POST(self) -> None:
@@ -403,6 +546,10 @@ class Handler(BaseHTTPRequestHandler):
                         HTTPStatus.BAD_REQUEST,
                     )
                 return self._send_json(result)
+
+            if route == '/api/preprocess/jobs':
+                job_id = submit_preprocess_job(payload)
+                return self._send_json({'job_id': job_id, 'status': 'queued'}, HTTPStatus.ACCEPTED)
 
 
             if route == "/api/multi-analyze":
