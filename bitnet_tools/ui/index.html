@@ -27,13 +27,17 @@
         <input id="csvFile" type="file" accept=".csv,text/csv" />
         <textarea id="csvText" rows="8" placeholder="또는 CSV 내용을 직접 붙여넣기"></textarea>
 
-        <label>요청</label>
+        <label>질문(question)</label>
         <div class="chips">
           <button class="chip" data-q="핵심 인사이트 3개와 근거를 알려줘">인사이트</button>
           <button class="chip" data-q="이상치 의심 포인트와 추가 확인 항목을 알려줘">이상치</button>
           <button class="chip" data-q="실행 가능한 다음 액션 5개를 우선순위로 제안해줘">다음행동</button>
         </div>
         <textarea id="question" rows="3">핵심 인사이트 3개와 근거를 알려줘</textarea>
+
+        <label>작업 요청(intent)</label>
+        <textarea id="intent" rows="2" placeholder="예: 파일 먼저 분석하고 이상치만 보여줘"></textarea>
+        <div id="intentActions" class="actions intent-actions" aria-live="polite"></div>
 
         <div class="actions">
           <button id="quickAnalyzeBtn">바로 분석</button>

@@ -90,3 +90,9 @@ pre {
   color: var(--muted);
 }
 .quick-guide li { margin: 4px 0; }
+
+
+.intent-actions {
+  margin: 8px 0 2px;
+  min-height: 36px;
+}
