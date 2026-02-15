@@ -526,6 +526,7 @@ async function runMultiAnalyze() {
     for (const f of files) {
       payloadFiles.push({ name: f.name, csv_text: await f.text() });
     }
+  });
 
     const data = await postJson('/api/multi-analyze', {
       files: payloadFiles,
