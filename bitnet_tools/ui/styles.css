@@ -25,7 +25,7 @@ body {
   padding: 14px;
   margin: 12px 0;
 }
-.row { display: flex; justify-content: space-between; gap: 12px; align-items: end; }
+.row { display: flex; justify-content: space-between; gap: 12px; align-items: end; flex-wrap: wrap; }
 label { display: block; margin-bottom: 8px; color: var(--muted); }
 textarea, input {
   width: 100%;

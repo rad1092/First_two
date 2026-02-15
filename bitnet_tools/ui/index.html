@@ -54,6 +54,26 @@
         <pre id="answer"></pre>
       </section>
 
+      
+      <section class="panel">
+        <h2>멀티 CSV 원클릭 분석</h2>
+        <p class="sub">여러 CSV 파일 선택 후 바로 통합 분석 + 대시보드 반영.</p>
+        <input id="multiCsvFiles" type="file" multiple accept=".csv,text/csv" />
+        <div class="row">
+          <div>
+            <label>그룹 컬럼(선택)</label>
+            <input id="groupColumn" placeholder="예: 시도명" />
+          </div>
+          <div>
+            <label>타깃 컬럼(선택)</label>
+            <input id="targetColumn" placeholder="예: 세차유형" />
+          </div>
+          <div class="actions">
+            <button id="multiAnalyzeBtn">멀티 분석 실행</button>
+          </div>
+        </div>
+      </section>
+
       <section class="panel">
         <h2>멀티 분석 대시보드(JSON)</h2>
         <p class="sub">`multi-analyze` 결과 JSON을 붙여넣고 시각적으로 확인하세요.</p>

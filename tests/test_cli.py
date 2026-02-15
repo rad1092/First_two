@@ -175,3 +175,32 @@ def test_cli_multi_analyze_chart_error_fallback(tmp_path, monkeypatch):
     assert code == 0
     body = out_json.read_text(encoding="utf-8")
     assert "charts_error" in body
+
+
+def test_cli_multi_analyze_no_cache_flag(tmp_path, monkeypatch):
+    p1 = tmp_path / "a.csv"
+    p1.write_text("city,val\nseoul,1\n", encoding="utf-8")
+    called = {}
+
+    def fake_analyze(csv, question, group_column=None, target_column=None, use_cache=True):
+        called["use_cache"] = use_cache
+        return {
+            "question": question,
+            "file_count": 1,
+            "total_row_count": 1,
+            "shared_columns": ["city"],
+            "union_columns": ["city", "val"],
+            "files": [{"path": str(p1), "summary": {"row_count": 1, "column_count": 2, "columns": ["city", "val"]}, "column_profiles": {"city": {"dtype": "string", "missing_ratio": 0.0, "unique_ratio": 1.0, "dominant_value_ratio": 1.0}, "val": {"dtype": "float", "missing_ratio": 0.0, "unique_ratio": 1.0, "dominant_value_ratio": 1.0}}, "group_target_ratio": None}],
+            "schema_drift": {},
+            "insights": [],
+            "code_guidance": {"recommended_steps": "", "pandas_example": ""},
+        }
+
+    monkeypatch.setattr(cli, "analyze_multiple_csv", fake_analyze)
+
+    out_json = tmp_path / "o.json"
+    out_md = tmp_path / "o.md"
+    code = cli.main(["multi-analyze", str(p1), "--question", "q", "--no-cache", "--out-json", str(out_json), "--out-report", str(out_md)])
+
+    assert code == 0
+    assert called["use_cache"] is False

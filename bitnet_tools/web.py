@@ -5,9 +5,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
 import subprocess
+import tempfile
 from urllib.parse import urlparse
 
 from .analysis import build_analysis_payload_from_csv_text
+from .multi_csv import analyze_multiple_csv
 
 
 UI_DIR = Path(__file__).parent / "ui"
@@ -74,6 +76,42 @@ class Handler(BaseHTTPRequestHandler):
                     question = "이 데이터의 핵심 인사이트를 알려줘"
                 result = build_analysis_payload_from_csv_text(csv_text, question)
                 return self._send_json(result)
+
+
+            if route == "/api/multi-analyze":
+                files = payload.get("files", [])
+                question = str(payload.get("question", "")).strip() or "다중 CSV를 비교 분석해줘"
+                group_column = str(payload.get("group_column", "")).strip() or None
+                target_column = str(payload.get("target_column", "")).strip() or None
+                if not isinstance(files, list) or not files:
+                    return self._send_json({"error": "files is required"}, HTTPStatus.BAD_REQUEST)
+
+                with tempfile.TemporaryDirectory(prefix="bitnet_multi_") as td:
+                    tmp_paths = []
+                    for i, f in enumerate(files):
+                        if not isinstance(f, dict):
+                            continue
+                        name = str(f.get("name", f"file_{i}.csv"))
+                        text = str(f.get("csv_text", ""))
+                        if not text.strip():
+                            continue
+                        if not name.endswith('.csv'):
+                            name = f"{name}.csv"
+                        path = Path(td) / name
+                        path.write_text(text, encoding="utf-8")
+                        tmp_paths.append(path)
+
+                    if not tmp_paths:
+                        return self._send_json({"error": "valid csv_text files are required"}, HTTPStatus.BAD_REQUEST)
+
+                    result = analyze_multiple_csv(
+                        tmp_paths,
+                        question,
+                        group_column=group_column,
+                        target_column=target_column,
+                        use_cache=False,
+                    )
+                    return self._send_json(result)
 
             if route == "/api/run":
                 model = str(payload.get("model", "")).strip()
