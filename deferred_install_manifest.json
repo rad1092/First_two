@@ -1,0 +1,17 @@
+{
+  "version": "1.0",
+  "description": "Deferred installation queue for package/model/tool assets that cannot be installed immediately.",
+  "items": [
+    {
+      "asset_type": "package",
+      "name": "example-package",
+      "version": "0.0.0",
+      "source": "https://pypi.org/project/example-package/",
+      "license": "UNKNOWN",
+      "sha256": "",
+      "defer_reason": "license_unverified",
+      "deferred_at": "2026-01-01T00:00:00Z",
+      "status": "deferred"
+    }
+  ]
+}
