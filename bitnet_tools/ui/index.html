@@ -18,6 +18,7 @@
           <button class="mode-btn" data-mode="advanced" id="modeAdvancedBtn">고급 모드</button>
         </div>
         <p class="sub">빠른 시작은 핵심 분석에 집중하고, 고급 모드는 멀티 분석/모델 실행 옵션을 제공합니다.</p>
+        <ol id="modeGuide" class="quick-guide" aria-live="polite"></ol>
       </section>
 
       <section class="panel">
@@ -26,13 +27,17 @@
         <input id="csvFile" type="file" accept=".csv,text/csv" />
         <textarea id="csvText" rows="8" placeholder="또는 CSV 내용을 직접 붙여넣기"></textarea>
 
-        <label>요청</label>
+        <label>질문(question)</label>
         <div class="chips">
           <button class="chip" data-q="핵심 인사이트 3개와 근거를 알려줘">인사이트</button>
           <button class="chip" data-q="이상치 의심 포인트와 추가 확인 항목을 알려줘">이상치</button>
           <button class="chip" data-q="실행 가능한 다음 액션 5개를 우선순위로 제안해줘">다음행동</button>
         </div>
         <textarea id="question" rows="3">핵심 인사이트 3개와 근거를 알려줘</textarea>
+
+        <label>작업 요청(intent)</label>
+        <textarea id="intent" rows="2" placeholder="예: 파일 먼저 분석하고 이상치만 보여줘"></textarea>
+        <div id="intentActions" class="actions intent-actions" aria-live="polite"></div>
 
         <div class="actions">
           <button id="quickAnalyzeBtn">바로 분석</button>
@@ -51,7 +56,12 @@
 
       <section class="panel">
         <h2>3) 실행 상태</h2>
-        <pre id="statusBox">대기 중</pre>
+        <pre id="statusBox" aria-live="polite">대기 중</pre>
+        <div id="errorUser" class="error-user" aria-live="polite"></div>
+        <details id="errorDetails" class="error-details">
+          <summary>상세 오류 보기</summary>
+          <pre id="errorDetailText"></pre>
+        </details>
       </section>
 
       <section class="panel">
@@ -86,7 +96,10 @@
         </div>
         <div class="actions">
           <button id="multiAnalyzeBtn">멀티 분석 실행</button>
+          <button id="startChartsJobBtn">차트 비동기 생성 시작</button>
+          <button id="retryChartsJobBtn" disabled>차트 실패 재시도</button>
         </div>
+        <pre id="chartsJobStatus">차트 작업 대기 중</pre>
       </section>
 
       <section class="panel advanced-only" id="dashboardPanel">
@@ -96,6 +109,29 @@
           <button id="renderDashboardBtn">대시보드 렌더링</button>
         </div>
         <div id="dashboardCards" class="cards"></div>
+
+        <h3>인사이트 필터</h3>
+        <div class="row">
+          <div>
+            <label>파일</label>
+            <select id="filterFile"></select>
+          </div>
+          <div>
+            <label>컬럼명</label>
+            <input id="filterColumn" placeholder="예: amount" />
+          </div>
+          <div>
+            <label>유형</label>
+            <select id="filterType"></select>
+          </div>
+        </div>
+
+        <h3>인사이트 리스트</h3>
+        <div id="insightList" class="insight-list"></div>
+
+        <h3>드릴다운(근거 데이터)</h3>
+        <pre id="insightDrilldown">인사이트를 선택하면 근거 데이터가 표시됩니다.</pre>
+
         <pre id="dashboardInsights"></pre>
       </section>
     </main>
