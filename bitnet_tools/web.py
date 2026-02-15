@@ -23,6 +23,7 @@ from urllib.parse import urlparse
 from .analysis import build_analysis_payload_from_request
 from .document_extract import extract_document_tables_from_base64, table_to_analysis_request
 from .multi_csv import analyze_multiple_csv
+from .planner import build_plan, execute_plan_from_csv_text, parse_question_to_intent
 from .visualize import create_multi_charts
 
 
@@ -491,6 +492,7 @@ class Handler(BaseHTTPRequestHandler):
                 question = str(payload.get("question", "")).strip()
                 if not question:
                     question = "이 데이터의 핵심 인사이트를 알려줘"
+                use_planner = bool(payload.get("use_planner", False))
 
                 input_type = str(payload.get("input_type", "csv") or "csv").strip().lower()
                 normalized_csv_text = str(payload.get("normalized_csv_text", "") or "")
@@ -545,6 +547,14 @@ class Handler(BaseHTTPRequestHandler):
                         ),
                         HTTPStatus.BAD_REQUEST,
                     )
+                if use_planner:
+                    intent = parse_question_to_intent(question, result.get("summary", {}))
+                    plan = build_plan(intent, result.get("summary", {}))
+                    result["planner"] = {
+                        "intent": intent.__dict__,
+                        "plan": {"nodes": plan.nodes, "warnings": plan.warnings, "fallback": plan.fallback},
+                        "execution": execute_plan_from_csv_text(plan, str(request_payload.get("normalized_csv_text", "") or "")),
+                    }
                 return self._send_json(result)
 
             if route == '/api/preprocess/jobs':

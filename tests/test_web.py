@@ -282,3 +282,23 @@ def test_analyze_document_fallback_error_uses_error_and_error_detail():
     finally:
         server.shutdown()
         thread.join(timeout=1)
+
+
+def test_analyze_api_with_planner_returns_execution_payload():
+    server, thread = _run_server()
+    base = f'http://127.0.0.1:{server.server_port}'
+    try:
+        code, body = _post_json(base + '/api/analyze', {
+            'input_type': 'csv',
+            'source_name': 'sales.csv',
+            'normalized_csv_text': 'region,sales\n서울,120\n부산,80\n',
+            'question': '서울 top 1 sample 1 임계값 100',
+            'use_planner': True,
+        })
+        assert code == 200
+        assert 'planner' in body
+        assert body['planner']['intent']['top_n'] == 1
+        assert body['planner']['execution']['meta']['fallback'] is False
+    finally:
+        server.shutdown()
+        thread.join(timeout=1)
