@@ -96,7 +96,10 @@
         </div>
         <div class="actions">
           <button id="multiAnalyzeBtn">멀티 분석 실행</button>
+          <button id="startChartsJobBtn">차트 비동기 생성 시작</button>
+          <button id="retryChartsJobBtn" disabled>차트 실패 재시도</button>
         </div>
+        <pre id="chartsJobStatus">차트 작업 대기 중</pre>
       </section>
 
       <section class="panel advanced-only" id="dashboardPanel">
@@ -106,6 +109,29 @@
           <button id="renderDashboardBtn">대시보드 렌더링</button>
         </div>
         <div id="dashboardCards" class="cards"></div>
+
+        <h3>인사이트 필터</h3>
+        <div class="row">
+          <div>
+            <label>파일</label>
+            <select id="filterFile"></select>
+          </div>
+          <div>
+            <label>컬럼명</label>
+            <input id="filterColumn" placeholder="예: amount" />
+          </div>
+          <div>
+            <label>유형</label>
+            <select id="filterType"></select>
+          </div>
+        </div>
+
+        <h3>인사이트 리스트</h3>
+        <div id="insightList" class="insight-list"></div>
+
+        <h3>드릴다운(근거 데이터)</h3>
+        <pre id="insightDrilldown">인사이트를 선택하면 근거 데이터가 표시됩니다.</pre>
+
         <pre id="dashboardInsights"></pre>
       </section>
     </main>

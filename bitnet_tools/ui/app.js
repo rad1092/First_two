@@ -20,11 +20,19 @@ const UI = {
   groupColumn: document.getElementById('groupColumn'),
   targetColumn: document.getElementById('targetColumn'),
   multiAnalyzeBtn: document.getElementById('multiAnalyzeBtn'),
+  startChartsJobBtn: document.getElementById('startChartsJobBtn'),
+  retryChartsJobBtn: document.getElementById('retryChartsJobBtn'),
+  chartsJobStatus: document.getElementById('chartsJobStatus'),
   dashboardJson: document.getElementById('dashboardJson'),
   dashboardCards: document.getElementById('dashboardCards'),
   dashboardInsights: document.getElementById('dashboardInsights'),
   renderDashboardBtn: document.getElementById('renderDashboardBtn'),
   copyPromptBtn: document.getElementById('copyPrompt'),
+  filterFile: document.getElementById('filterFile'),
+  filterColumn: document.getElementById('filterColumn'),
+  filterType: document.getElementById('filterType'),
+  insightList: document.getElementById('insightList'),
+  insightDrilldown: document.getElementById('insightDrilldown'),
 };
 
 const STATUS = {
@@ -52,6 +60,9 @@ const appState = {
   currentMode: 'quick',
   busyCount: 0,
   request: { question: '', intent: '', route: 'analyze' },
+  latestMultiResult: null,
+  structuredInsights: [],
+  chartJob: { id: null, files: [], status: 'idle', pollTimer: null },
 };
 
 function setStatus(message) {
@@ -81,6 +92,8 @@ function toggleBusy(isBusy) {
     UI.runBtn,
     UI.multiAnalyzeBtn,
     UI.renderDashboardBtn,
+    UI.startChartsJobBtn,
+    UI.retryChartsJobBtn,
     ...document.querySelectorAll('.mode-btn'),
     ...document.querySelectorAll('.chip'),
   ];
@@ -106,6 +119,27 @@ async function postJson(url, body, context) {
     };
   }
 
+  if (!res.ok) {
+    throw {
+      userMessage: `${context}에 실패했습니다.`,
+      detail: data?.error_detail || data?.error || JSON.stringify(data || {}),
+    };
+  }
+  return data;
+}
+
+async function getJson(url, context) {
+  let res;
+  let data = null;
+  try {
+    res = await fetch(url);
+    data = await res.json();
+  } catch (err) {
+    throw {
+      userMessage: `${context} 중 네트워크 오류가 발생했습니다.`,
+      detail: err instanceof Error ? err.message : String(err),
+    };
+  }
   if (!res.ok) {
     throw {
       userMessage: `${context}에 실패했습니다.`,
@@ -200,6 +234,120 @@ function setMode(mode) {
   renderModeGuide(mode);
 }
 
+function parseInsightType(text) {
+  const t = String(text || '');
+  if (/결측/.test(t)) return 'missing';
+  if (/이상치|outlier/.test(t)) return 'outlier';
+  if (/드리프트|변화|drift/.test(t)) return 'drift';
+  return 'general';
+}
+
+function buildStructuredInsights(data) {
+  const list = [];
+  const insights = Array.isArray(data?.insights) ? data.insights : [];
+  insights.forEach((text, idx) => {
+    const entry = {
+      id: `insight-${idx + 1}`,
+      text,
+      type: parseInsightType(text),
+      file: '전체',
+      column: '-',
+      evidence: { source: 'insights', raw: text },
+    };
+
+    const fileMatch = text.match(/([^\s]+\.csv)/);
+    if (fileMatch) entry.file = fileMatch[1];
+    const colMatch = text.match(/컬럼\s*[:=]?\s*([A-Za-z0-9_가-힣]+)/);
+    if (colMatch) entry.column = colMatch[1];
+    list.push(entry);
+  });
+
+  (data.files || []).forEach((f) => {
+    const name = (f.path || '').split('/').pop() || 'unknown.csv';
+    const profiles = f.column_profiles || {};
+    Object.entries(profiles).forEach(([col, p]) => {
+      if ((p.missing_ratio || 0) >= 0.2) {
+        list.push({
+          id: `missing-${name}-${col}`,
+          text: `${name} / ${col}: 결측 비율 ${(p.missing_ratio * 100).toFixed(1)}%`,
+          type: 'missing',
+          file: name,
+          column: col,
+          evidence: p,
+        });
+      }
+      const outlier = p.numeric_distribution?.outlier_ratio || 0;
+      if (outlier >= 0.1) {
+        list.push({
+          id: `outlier-${name}-${col}`,
+          text: `${name} / ${col}: 이상치 비율 ${(outlier * 100).toFixed(1)}%`,
+          type: 'outlier',
+          file: name,
+          column: col,
+          evidence: p,
+        });
+      }
+    });
+  });
+
+  return list;
+}
+
+function renderFilters() {
+  if (!UI.filterFile || !UI.filterType) return;
+
+  const files = ['전체', ...new Set(appState.structuredInsights.map((x) => x.file).filter(Boolean))];
+  UI.filterFile.innerHTML = files.map((f) => `<option value="${f}">${f}</option>`).join('');
+
+  const types = ['all', ...new Set(appState.structuredInsights.map((x) => x.type).filter(Boolean))];
+  const typeName = { all: '전체', missing: '결측', outlier: '이상치', drift: '드리프트', general: '일반' };
+  UI.filterType.innerHTML = types.map((t) => `<option value="${t}">${typeName[t] || t}</option>`).join('');
+}
+
+function getFilteredInsights() {
+  const fFile = UI.filterFile?.value || '전체';
+  const fCol = (UI.filterColumn?.value || '').trim().toLowerCase();
+  const fType = UI.filterType?.value || 'all';
+
+  return appState.structuredInsights.filter((item) => {
+    if (fFile !== '전체' && item.file !== fFile) return false;
+    if (fType !== 'all' && item.type !== fType) return false;
+    if (fCol && !String(item.column).toLowerCase().includes(fCol) && !String(item.text).toLowerCase().includes(fCol)) return false;
+    return true;
+  });
+}
+
+function renderDrilldown(item) {
+  if (!UI.insightDrilldown) return;
+  UI.insightDrilldown.textContent = JSON.stringify({
+    id: item.id,
+    file: item.file,
+    column: item.column,
+    type: item.type,
+    evidence: item.evidence,
+  }, null, 2);
+}
+
+function renderInsightList() {
+  if (!UI.insightList) return;
+  const rows = getFilteredInsights();
+  UI.insightList.innerHTML = '';
+  if (!rows.length) {
+    UI.insightList.textContent = '필터 조건에 맞는 인사이트가 없습니다.';
+    UI.insightDrilldown.textContent = '인사이트를 선택하면 근거 데이터가 표시됩니다.';
+    return;
+  }
+
+  rows.forEach((item) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'insight-item';
+    btn.textContent = `[${item.type}] ${item.text}`;
+    btn.addEventListener('click', () => renderDrilldown(item));
+    UI.insightList.appendChild(btn);
+  });
+}
+
 function renderDashboard(data) {
   if (!UI.dashboardCards || !UI.dashboardInsights) return;
   UI.dashboardCards.innerHTML = '';
@@ -223,7 +371,117 @@ function renderDashboard(data) {
   UI.dashboardInsights.textContent = insights.length
     ? insights.map((x, i) => `${i + 1}. ${x}`).join('\n')
     : '인사이트 항목이 없습니다.';
+
+  appState.structuredInsights = buildStructuredInsights(data);
+  renderFilters();
+  renderInsightList();
+
   setStatus(STATUS.dashboardDone);
+}
+
+function setChartsJobStatusText(text) {
+  if (UI.chartsJobStatus) UI.chartsJobStatus.textContent = text;
+}
+
+function stopChartPolling() {
+  if (appState.chartJob.pollTimer) {
+    clearInterval(appState.chartJob.pollTimer);
+    appState.chartJob.pollTimer = null;
+  }
+}
+
+async function pollChartJobOnce() {
+  if (!appState.chartJob.id) return;
+  try {
+    const result = await getJson(`/api/charts/jobs/${appState.chartJob.id}`, '차트 작업 조회');
+    appState.chartJob.status = result.status;
+    setChartsJobStatusText(`job=${result.job_id} status=${result.status}\n${JSON.stringify(result, null, 2)}`);
+
+    if (result.status === 'done') {
+      stopChartPolling();
+      UI.retryChartsJobBtn.disabled = true;
+      setStatus('차트 작업 완료');
+    } else if (result.status === 'failed') {
+      stopChartPolling();
+      UI.retryChartsJobBtn.disabled = false;
+      showError('차트 작업이 실패했습니다.', result.error || 'unknown');
+      setStatus('차트 작업 실패');
+    }
+  } catch (err) {
+    stopChartPolling();
+    UI.retryChartsJobBtn.disabled = false;
+    showError(err.userMessage || '차트 상태 조회 실패', err.detail || '');
+    setStatus('차트 상태 조회 실패');
+  }
+}
+
+function startChartPolling() {
+  stopChartPolling();
+  appState.chartJob.pollTimer = setInterval(() => {
+    pollChartJobOnce();
+  }, 1500);
+}
+
+function collectMultiFiles() {
+  const files = [...(UI.multiCsvFiles?.files || [])];
+  return files;
+}
+
+async function startChartsJob() {
+  clearError();
+  const files = collectMultiFiles();
+  if (!files.length) {
+    showError(USER_ERROR.noMultiFiles, 'input files is empty');
+    setChartsJobStatusText('차트 작업 시작 실패: 파일이 없습니다.');
+    return;
+  }
+
+  toggleBusy(true);
+  try {
+    const payloadFiles = [];
+    for (const f of files) {
+      payloadFiles.push({ name: f.name, csv_text: await f.text() });
+    }
+    appState.chartJob.files = payloadFiles;
+
+    const queued = await postJson('/api/charts/jobs', { files: payloadFiles }, '차트 작업 생성');
+    appState.chartJob.id = queued.job_id;
+    appState.chartJob.status = queued.status;
+    UI.retryChartsJobBtn.disabled = true;
+    setChartsJobStatusText(`job=${queued.job_id} status=${queued.status}`);
+    setStatus('차트 작업 큐 등록 완료');
+    await pollChartJobOnce();
+    startChartPolling();
+  } catch (err) {
+    showError(err.userMessage || '차트 작업 생성 실패', err.detail || '');
+    setStatus('차트 작업 시작 실패');
+  } finally {
+    toggleBusy(false);
+  }
+}
+
+async function retryChartsJob() {
+  if (!appState.chartJob.files.length) {
+    showError('재시도할 차트 작업 데이터가 없습니다.', 'chartJob.files is empty');
+    return;
+  }
+  clearError();
+  toggleBusy(true);
+  try {
+    const queued = await postJson('/api/charts/jobs', { files: appState.chartJob.files }, '차트 작업 재시도');
+    appState.chartJob.id = queued.job_id;
+    appState.chartJob.status = queued.status;
+    UI.retryChartsJobBtn.disabled = true;
+    setChartsJobStatusText(`job=${queued.job_id} status=${queued.status} (retry)`);
+    setStatus('차트 작업 재시도 시작');
+    await pollChartJobOnce();
+    startChartPolling();
+  } catch (err) {
+    showError(err.userMessage || '차트 작업 재시도 실패', err.detail || '');
+    setStatus('차트 작업 재시도 실패');
+  } finally {
+    toggleBusy(false);
+  }
 }
 
 async function runAnalyze() {
@@ -252,7 +510,7 @@ async function runAnalyze() {
 
 async function runMultiAnalyze() {
   clearError();
-  const files = [...(UI.multiCsvFiles?.files || [])];
+  const files = collectMultiFiles();
   if (!files.length) {
     UI.dashboardInsights.textContent = USER_ERROR.noMultiFiles;
     showError(USER_ERROR.noMultiFiles, 'input files is empty');
@@ -268,6 +526,7 @@ async function runMultiAnalyze() {
     for (const f of files) {
       payloadFiles.push({ name: f.name, csv_text: await f.text() });
     }
+  });
 
     const data = await postJson('/api/multi-analyze', {
       files: payloadFiles,
@@ -276,6 +535,7 @@ async function runMultiAnalyze() {
       target_column: UI.targetColumn.value.trim(),
     }, '멀티 분석');
 
+    appState.latestMultiResult = data;
     UI.dashboardJson.value = JSON.stringify(data, null, 2);
     renderDashboard(data);
     setStatus(STATUS.multiDone);
@@ -350,6 +610,7 @@ async function runByIntent() {
     renderIntentActions([
       { label: '대시보드 JSON 입력으로 이동', onClick: () => UI.dashboardJson?.focus() },
       { label: '먼저 멀티 분석 실행', onClick: () => UI.multiAnalyzeBtn?.focus() },
+      { label: '비동기 차트 생성 시작', onClick: () => UI.startChartsJobBtn?.focus() },
     ]);
     setStatus('의도 라우팅: 시각화 안내 우선');
     return;
@@ -391,11 +652,14 @@ function bindEvents() {
   UI.quickAnalyzeBtn?.addEventListener('click', runByIntent);
   UI.runBtn?.addEventListener('click', runModel);
   UI.multiAnalyzeBtn?.addEventListener('click', runMultiAnalyze);
+  UI.startChartsJobBtn?.addEventListener('click', startChartsJob);
+  UI.retryChartsJobBtn?.addEventListener('click', retryChartsJob);
 
   UI.renderDashboardBtn?.addEventListener('click', () => {
     clearError();
     try {
       const parsed = JSON.parse(UI.dashboardJson.value || '{}');
+      appState.latestMultiResult = parsed;
       renderDashboard(parsed);
     } catch (err) {
       UI.dashboardInsights.textContent = USER_ERROR.invalidDashboardJson;
@@ -403,6 +667,11 @@ function bindEvents() {
       setStatus('대시보드 렌더 실패');
     }
   });
+
+  [UI.filterFile, UI.filterType].forEach((el) => {
+    el?.addEventListener('change', renderInsightList);
+  });
+  UI.filterColumn?.addEventListener('input', renderInsightList);
 
   UI.intent?.addEventListener('input', () => {
     if (!UI.intent.value.trim()) {
@@ -421,6 +690,10 @@ function init() {
   bindEvents();
   clearError();
   setMode(appState.currentMode);
+  if (UI.filterFile) UI.filterFile.innerHTML = '<option value="전체">전체</option>';
+  if (UI.filterType) UI.filterType.innerHTML = '<option value="all">전체</option>';
+  if (UI.retryChartsJobBtn) UI.retryChartsJobBtn.disabled = true;
+  setChartsJobStatusText('차트 작업 대기 중');
 }
 
 init();

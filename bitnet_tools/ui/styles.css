@@ -114,3 +114,28 @@ pre {
   cursor: pointer;
   color: #fecaca;
 }
+
+
+.insight-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0;
+}
+.insight-item {
+  text-align: left;
+  background: #0b1220;
+  color: #e2e8f0;
+  border: 1px solid #334155;
+}
+#chartsJobStatus {
+  margin-top: 8px;
+}
+select {
+  width: 100%;
+  background: #0b1220;
+  color: var(--text);
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 10px;
+}
