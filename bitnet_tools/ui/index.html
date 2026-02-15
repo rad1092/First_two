@@ -83,6 +83,30 @@
         </details>
       </section>
 
+
+      <section class="panel">
+        <h2>Geo 의심 케이스 추출</h2>
+        <p class="sub">지도 렌더링 없이 의심 케이스 파일(CSV/JSON)을 생성합니다.</p>
+        <div class="row">
+          <div>
+            <label>위도 컬럼명</label>
+            <input id="geoLatCol" placeholder="예: lat" />
+          </div>
+          <div>
+            <label>경도 컬럼명</label>
+            <input id="geoLonCol" placeholder="예: lon" />
+          </div>
+          <div>
+            <label>거리 임계값(km)</label>
+            <input id="geoThreshold" type="number" min="0" step="0.1" value="25" />
+          </div>
+        </div>
+        <div class="actions">
+          <button id="geoExtractBtn" type="button">의심 케이스 추출 다운로드</button>
+        </div>
+        <pre id="geoResult" aria-live="polite">Geo 추출 대기 중</pre>
+      </section>
+
       <section class="panel">
         <h2>4) 결과</h2>
         <div id="analyzeAssist" class="analyze-assist" aria-live="polite" hidden>

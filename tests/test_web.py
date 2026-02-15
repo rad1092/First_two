@@ -302,3 +302,44 @@ def test_analyze_api_with_planner_returns_execution_payload():
     finally:
         server.shutdown()
         thread.join(timeout=1)
+
+
+def test_geo_suspects_api_returns_inline_rows_and_artifacts():
+    server, thread = _run_server()
+    base = f'http://127.0.0.1:{server.server_port}'
+    try:
+        code, body = _post_json(base + '/api/geo/suspects', {
+            'input_type': 'csv',
+            'normalized_csv_text': 'id,lat,lon\n1,37.5665,126.978\n2,35.1796,129.0756\n3,,127\n',
+            'lat_col': 'lat',
+            'lon_col': 'lon',
+            'threshold_km': 25,
+            'inline': True,
+            'include_geojson': False,
+        })
+        assert code == 200
+        assert body['count'] == 3
+        assert body['suspect_count'] == 2
+        assert body['normal_count'] == 1
+        assert 'rows' in body
+        assert {'csv', 'json'}.issubset(set(body['artifacts'].keys()))
+    finally:
+        server.shutdown()
+        thread.join(timeout=1)
+
+
+def test_geo_suspects_api_validates_lat_lon_columns():
+    server, thread = _run_server()
+    base = f'http://127.0.0.1:{server.server_port}'
+    try:
+        code, body = _post_json(base + '/api/geo/suspects', {
+            'input_type': 'csv',
+            'normalized_csv_text': 'id,a,b\n1,1,2\n',
+            'lat_col': 'lat',
+            'lon_col': 'lon',
+        })
+        assert code == 400
+        assert body['error'] == 'lat_col/lon_col not found in csv header'
+    finally:
+        server.shutdown()
+        thread.join(timeout=1)

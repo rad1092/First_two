@@ -46,6 +46,11 @@ const UI = {
   filterType: document.getElementById('filterType'),
   insightList: document.getElementById('insightList'),
   insightDrilldown: document.getElementById('insightDrilldown'),
+  geoLatCol: document.getElementById('geoLatCol'),
+  geoLonCol: document.getElementById('geoLonCol'),
+  geoThreshold: document.getElementById('geoThreshold'),
+  geoExtractBtn: document.getElementById('geoExtractBtn'),
+  geoResult: document.getElementById('geoResult'),
 };
 
 const STATUS = {
@@ -377,6 +382,7 @@ function toggleBusy(isBusy) {
     UI.retryChartsJobBtn,
     UI.switchToCsvBtn,
     UI.candidateTableSelect,
+    UI.geoExtractBtn,
     ...document.querySelectorAll('.mode-btn'),
     ...document.querySelectorAll('.chip'),
   ];
@@ -974,6 +980,85 @@ async function runByIntent() {
   setStatus('의도 라우팅 실패');
 }
 
+
+
+function renderGeoResult(data) {
+  if (!UI.geoResult) return;
+  const artifactLinks = Object.entries(data?.artifacts || {})
+    .map(([key, value]) => `${key}: ${value}`)
+    .join('\n');
+  UI.geoResult.textContent = [
+    `총 ${data?.count ?? 0}건 / 의심 ${data?.suspect_count ?? 0}건 / 정상 ${data?.normal_count ?? 0}건`,
+    `threshold_km=${data?.threshold_km ?? 25}`,
+    artifactLinks,
+  ].filter(Boolean).join('\n');
+}
+
+async function runGeoSuspectExtract() {
+  const file = UI.csvFile?.files?.[0] || null;
+  const latCol = String(UI.geoLatCol?.value || '').trim();
+  const lonCol = String(UI.geoLonCol?.value || '').trim();
+  const threshold = Number(UI.geoThreshold?.value || 25);
+
+  if (!latCol || !lonCol) {
+    showError('위도/경도 컬럼명을 입력하세요.', 'geoLatCol/geoLonCol is empty');
+    return;
+  }
+
+  let payload;
+  if (file) {
+    const inputType = getInputTypeForFile(file);
+    if (inputType === 'excel') {
+      payload = {
+        input_type: 'excel',
+        source_name: file.name,
+        file_base64: await readFileAsBase64(file),
+        sheet_name: UI.sheetSelect?.value || '',
+      };
+    } else if (inputType === 'document') {
+      payload = {
+        input_type: 'document',
+        source_name: file.name,
+        file_base64: await readFileAsBase64(file),
+        table_index: Number(UI.sheetSelect?.value || 0),
+      };
+    } else {
+      payload = {
+        input_type: 'csv',
+        source_name: file.name,
+        normalized_csv_text: await file.text(),
+      };
+    }
+  } else {
+    payload = {
+      input_type: 'csv',
+      source_name: '<inline_csv>',
+      normalized_csv_text: UI.csvText?.value || '',
+    };
+  }
+
+  clearError();
+  try {
+    toggleBusy(true);
+    setStatus('Geo 의심 케이스 추출 중...');
+    const data = await postJson('/api/geo/suspects', {
+      ...payload,
+      lat_col: latCol,
+      lon_col: lonCol,
+      threshold_km: Number.isFinite(threshold) ? threshold : 25,
+      inline: false,
+      include_geojson: false,
+    }, 'Geo 의심 케이스 추출');
+    renderGeoResult(data);
+    setStatus('Geo 의심 케이스 추출 완료');
+  } catch (err) {
+    showError(err.userMessage || 'Geo 의심 케이스 추출 실패', err.detail || '');
+    setStatus('Geo 의심 케이스 추출 실패');
+  } finally {
+    toggleBusy(false);
+  }
+}
+
 function bindEvents() {
   document.querySelectorAll('.mode-btn').forEach((btn) => {
     btn.addEventListener('click', () => setMode(btn.dataset.mode));
@@ -1038,6 +1123,7 @@ function bindEvents() {
   UI.runBtn?.addEventListener('click', runModel);
   UI.multiAnalyzeBtn?.addEventListener('click', runMultiAnalyze);
   UI.startChartsJobBtn?.addEventListener('click', startChartsJob);
+  UI.geoExtractBtn?.addEventListener('click', runGeoSuspectExtract);
   UI.retryChartsJobBtn?.addEventListener('click', retryChartsJob);
   UI.retryPreprocessBtn?.addEventListener('click', async () => {
     if (!appState.preprocessJob.payload) {

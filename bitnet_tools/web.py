@@ -22,6 +22,7 @@ from urllib.parse import urlparse
 
 from .analysis import build_analysis_payload_from_request
 from .document_extract import extract_document_tables_from_base64, table_to_analysis_request
+from .geo import flag_geo_suspects, validate_lat_lon
 from .multi_csv import analyze_multiple_csv
 from .planner import build_plan, execute_plan_from_csv_text, parse_question_to_intent
 from .visualize import create_multi_charts
@@ -213,6 +214,65 @@ def _classify_preprocess_error(exc: Exception) -> str:
     if any(token in msg for token in ['base64', 'zip', 'corrupt', '손상', 'broken', 'unsupported excel format']):
         return 'file_corruption'
     return 'parser_error'
+
+
+def _rows_from_csv_text(csv_text: str) -> tuple[list[str], list[dict[str, Any]]]:
+    reader = csv.DictReader(io.StringIO(csv_text))
+    fieldnames = [str(name) for name in (reader.fieldnames or []) if name is not None]
+    if not fieldnames:
+        raise ValueError('csv header is required')
+    rows = [dict(row) for row in reader]
+    return fieldnames, rows
+
+
+def _build_geojson_feature_collection(rows: list[dict[str, Any]], lat_col: str, lon_col: str) -> dict[str, Any]:
+    features: list[dict[str, Any]] = []
+    for row in rows:
+        if not validate_lat_lon(row.get(lat_col), row.get(lon_col)):
+            continue
+        lon = float(row[lon_col])
+        lat = float(row[lat_col])
+        feature_props = {k: v for k, v in row.items() if k not in {lat_col, lon_col}}
+        features.append({
+            'type': 'Feature',
+            'geometry': {'type': 'Point', 'coordinates': [lon, lat]},
+            'properties': feature_props,
+        })
+    return {'type': 'FeatureCollection', 'features': features}
+
+
+def _write_geo_suspect_artifacts(
+    result_rows: list[dict[str, Any]],
+    fieldnames: list[str],
+    lat_col: str,
+    lon_col: str,
+    include_geojson: bool,
+) -> dict[str, str]:
+    out_dir = Path('.bitnet_cache') / 'geo_suspects' / uuid.uuid4().hex
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    csv_path = out_dir / 'geo_suspects.csv'
+    json_path = out_dir / 'geo_suspects.json'
+    geojson_path = out_dir / 'geo_suspects.geojson'
+
+    ordered_fields = list(fieldnames)
+    for col in ['is_suspect', 'suspect_reason', 'distance_km']:
+        if col not in ordered_fields:
+            ordered_fields.append(col)
+
+    with csv_path.open('w', encoding='utf-8', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=ordered_fields)
+        writer.writeheader()
+        writer.writerows(result_rows)
+
+    json_path.write_text(json.dumps(result_rows, ensure_ascii=False, indent=2), encoding='utf-8')
+
+    artifacts = {'csv': str(csv_path), 'json': str(json_path)}
+    if include_geojson:
+        geojson = _build_geojson_feature_collection(result_rows, lat_col, lon_col)
+        geojson_path.write_text(json.dumps(geojson, ensure_ascii=False, indent=2), encoding='utf-8')
+        artifacts['geojson'] = str(geojson_path)
+    return artifacts
 
 
 def _cleanup_expired_preprocess_jobs() -> None:
@@ -561,6 +621,56 @@ class Handler(BaseHTTPRequestHandler):
                 job_id = submit_preprocess_job(payload)
                 return self._send_json({'job_id': job_id, 'status': 'queued'}, HTTPStatus.ACCEPTED)
 
+
+
+            if route == '/api/geo/suspects':
+                lat_col = str(payload.get('lat_col', '')).strip()
+                lon_col = str(payload.get('lon_col', '')).strip()
+                threshold_km = float(payload.get('threshold_km', 25) or 25)
+                include_geojson = bool(payload.get('include_geojson', False))
+                inline = bool(payload.get('inline', True))
+
+                if not lat_col or not lon_col:
+                    return self._send_json(self._error_payload('lat_col and lon_col are required'), HTTPStatus.BAD_REQUEST)
+
+                file_payload = {
+                    'input_type': str(payload.get('input_type', 'csv') or 'csv'),
+                    'name': str(payload.get('source_name', '<inline_csv>') or '<inline_csv>'),
+                    'normalized_csv_text': str(payload.get('normalized_csv_text', '') or ''),
+                    'csv_text': str(payload.get('csv_text', '') or ''),
+                    'file_base64': payload.get('file_base64', ''),
+                    'sheet_name': payload.get('sheet_name', ''),
+                    'table_index': payload.get('table_index', 0),
+                }
+                _, normalized_csv_text, _ = _coerce_csv_text_from_file_payload(file_payload)
+                fieldnames, rows = _rows_from_csv_text(normalized_csv_text)
+
+                if lat_col not in fieldnames or lon_col not in fieldnames:
+                    return self._send_json(
+                        self._error_payload('lat_col/lon_col not found in csv header', f'header={fieldnames}'),
+                        HTTPStatus.BAD_REQUEST,
+                    )
+
+                result_rows = flag_geo_suspects(rows, lat_col=lat_col, lon_col=lon_col, threshold_km=threshold_km)
+                suspect_count = sum(1 for row in result_rows if row.get('is_suspect'))
+                normal_count = len(result_rows) - suspect_count
+                artifacts = _write_geo_suspect_artifacts(
+                    result_rows,
+                    fieldnames,
+                    lat_col=lat_col,
+                    lon_col=lon_col,
+                    include_geojson=include_geojson,
+                )
+                response = {
+                    'count': len(result_rows),
+                    'suspect_count': suspect_count,
+                    'normal_count': normal_count,
+                    'threshold_km': threshold_km,
+                    'artifacts': artifacts,
+                }
+                if inline:
+                    response['rows'] = result_rows
+                return self._send_json(response)
 
             if route == "/api/multi-analyze":
                 files = payload.get("files", [])
