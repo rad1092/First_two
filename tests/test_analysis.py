@@ -126,3 +126,17 @@ def test_multi_csv_cache_created(tmp_path, monkeypatch):
     result = multi.analyze_multiple_csv([p], "캐시")
     assert result["file_count"] == 1
     assert any((tmp_path / ".cache").glob("*.json"))
+
+
+def test_multi_csv_top_values_capped_marker(monkeypatch, tmp_path):
+    import bitnet_tools.multi_csv as multi
+
+    monkeypatch.setattr(multi, "TOP_VALUE_TRACK_CAP", 3)
+    p = tmp_path / "cardinality.csv"
+    p.write_text("col\na\nb\nc\nd\na\n", encoding="utf-8")
+
+    result = multi.analyze_multiple_csv([p], "카디널리티")
+    prof = result["files"][0]["column_profiles"]["col"]
+
+    assert prof["top_values_capped"] is True
+    assert any(x["value"] == "__OTHER__" for x in prof["top_values"])
