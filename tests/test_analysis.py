@@ -3,6 +3,8 @@ from pathlib import Path
 from bitnet_tools.analysis import (
     build_analysis_payload,
     build_analysis_payload_from_csv_text,
+    build_analysis_payload_from_request,
+    normalize_analysis_input,
     summarize_rows,
     build_markdown_report,
 )
@@ -33,6 +35,8 @@ def test_build_analysis_payload(tmp_path):
 
     assert payload["csv_path"].endswith("sample.csv")
     assert payload["summary"]["row_count"] == 2
+    assert payload["input"]["input_type"] == "csv"
+    assert payload["input"]["meta"]["csv_path"].endswith("sample.csv")
     assert "핵심요약 / 근거 / 한계 / 다음행동" in payload["prompt"]
 
 
@@ -43,6 +47,7 @@ def test_build_analysis_payload_from_csv_text():
 
     assert payload["csv_path"] == "<inline_csv>"
     assert payload["summary"]["row_count"] == 2
+    assert payload["input"]["preprocessing_steps"] == ["promote_legacy_csv_text"]
 
 
 def test_streaming_summary_keeps_mixed_type_as_string(tmp_path):
@@ -183,3 +188,35 @@ def test_baseline_fixture_summaries_are_stable(tmp_path):
 
     missing = build_analysis_payload(root / "missing_heavy.csv", "baseline")
     assert missing["summary"]["missing_counts"] == {"a": 2, "b": 2, "c": 1}
+
+
+def test_normalize_analysis_input_new_contract():
+    normalized = normalize_analysis_input(
+        {
+            "input_type": "excel",
+            "source_name": "sales.xlsx#sheet1",
+            "normalized_csv_text": "a,b\n1,2\n",
+            "meta": {"sheet": "sheet1"},
+        }
+    )
+
+    assert normalized.input_type == "excel"
+    assert normalized.source_name == "sales.xlsx#sheet1"
+    assert normalized.preprocessing_steps == ["use_normalized_csv_text"]
+
+
+def test_build_analysis_payload_from_request_with_legacy_csv_text():
+    payload = build_analysis_payload_from_request(
+        {"csv_text": "x,y\n1,2\n", "source_name": "legacy_inline"},
+        "질문",
+    )
+
+    assert payload["summary"]["row_count"] == 1
+    assert payload["input"]["meta"]["legacy_csv_text"] is True
+
+
+def test_normalize_analysis_input_rejects_unsupported_type():
+    import pytest
+
+    with pytest.raises(ValueError):
+        normalize_analysis_input({"input_type": "json", "normalized_csv_text": "a\n1\n"})

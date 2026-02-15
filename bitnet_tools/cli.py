@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .analysis import DataSummary, build_analysis_payload, build_markdown_report
+from .analysis import DataSummary, build_analysis_payload, build_analysis_payload_from_request, build_markdown_report
 from .doctor import collect_environment
 from .multi_csv import analyze_multiple_csv, build_multi_csv_markdown, result_to_json
 from .visualize import create_multi_charts
@@ -150,7 +150,13 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "analyze":
-        payload = build_analysis_payload(args.csv, args.question)
+        request_payload = {
+            "input_type": "csv",
+            "source_name": args.csv.name,
+            "normalized_csv_text": args.csv.read_text(encoding="utf-8"),
+            "meta": {"csv_path": str(args.csv)},
+        }
+        payload = build_analysis_payload_from_request(request_payload, args.question, csv_path_override=str(args.csv))
         args.out.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
         )

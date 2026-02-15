@@ -8,6 +8,27 @@ from pathlib import Path
 from typing import Any
 
 
+VALID_INPUT_TYPES = {"csv", "excel", "document"}
+
+
+@dataclass
+class NormalizedAnalysisInput:
+    input_type: str
+    source_name: str
+    normalized_csv_text: str
+    meta: dict[str, Any]
+    preprocessing_steps: list[str]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "input_type": self.input_type,
+            "source_name": self.source_name,
+            "normalized_csv_text": self.normalized_csv_text,
+            "meta": self.meta,
+            "preprocessing_steps": self.preprocessing_steps,
+        }
+
+
 @dataclass
 class DataSummary:
     row_count: int
@@ -151,38 +172,87 @@ def build_markdown_report(summary: DataSummary, question: str) -> str:
     return "\n".join(lines)
 
 
-def build_analysis_payload(csv_path: str | Path, question: str) -> dict[str, Any]:
-    path = Path(csv_path)
-    if not path.exists():
-        raise FileNotFoundError(f"CSV file not found: {path}")
+def normalize_analysis_input(payload: dict[str, Any]) -> NormalizedAnalysisInput:
+    preprocessing_steps: list[str] = []
 
-    with path.open("r", encoding="utf-8", newline="") as f:
-        reader = csv.DictReader(f)
-        if reader.fieldnames is None:
-            raise ValueError("CSV header not found")
-        columns = [str(c) for c in reader.fieldnames]
+    raw_type = str(payload.get("input_type", "csv")).strip().lower() or "csv"
+    if raw_type not in VALID_INPUT_TYPES:
+        raise ValueError(f"unsupported input_type: {raw_type}")
 
-        summary = summarize_reader(reader, columns)
+    source_name = str(payload.get("source_name", "")).strip() or "<inline_csv>"
 
-    return {
-        "csv_path": str(path),
-        "question": question,
-        "summary": summary.to_dict(),
-        "prompt": build_prompt(summary, question),
-    }
+    meta = payload.get("meta", {})
+    if not isinstance(meta, dict):
+        meta = {"raw_meta": str(meta)}
+        preprocessing_steps.append("meta_coerced_to_dict")
+
+    normalized_csv_text = str(payload.get("normalized_csv_text", ""))
+    if normalized_csv_text.strip():
+        preprocessing_steps.append("use_normalized_csv_text")
+    else:
+        legacy_csv_text = str(payload.get("csv_text", ""))
+        if not legacy_csv_text.strip():
+            raise ValueError("normalized_csv_text is required")
+        normalized_csv_text = legacy_csv_text
+        preprocessing_steps.append("promote_legacy_csv_text")
+        meta = {**meta, "legacy_csv_text": True}
+
+    return NormalizedAnalysisInput(
+        input_type=raw_type,
+        source_name=source_name,
+        normalized_csv_text=normalized_csv_text,
+        meta=meta,
+        preprocessing_steps=preprocessing_steps,
+    )
 
 
-def build_analysis_payload_from_csv_text(csv_text: str, question: str) -> dict[str, Any]:
-    reader = csv.DictReader(io.StringIO(csv_text))
+def build_analysis_payload_from_request(
+    payload: dict[str, Any], question: str, *, csv_path_override: str | None = None
+) -> dict[str, Any]:
+    normalized_input = normalize_analysis_input(payload)
+    return build_analysis_payload_from_normalized_input(
+        normalized_input,
+        question,
+        csv_path_override=csv_path_override,
+    )
+
+
+def build_analysis_payload_from_normalized_input(
+    normalized_input: NormalizedAnalysisInput,
+    question: str,
+    *,
+    csv_path_override: str | None = None,
+) -> dict[str, Any]:
+    reader = csv.DictReader(io.StringIO(normalized_input.normalized_csv_text))
     if reader.fieldnames is None:
         raise ValueError("CSV header not found")
 
     columns = [str(c) for c in reader.fieldnames]
     summary = summarize_reader(reader, columns)
+    csv_path = csv_path_override or normalized_input.source_name
 
     return {
-        "csv_path": "<inline_csv>",
+        "csv_path": csv_path,
         "question": question,
         "summary": summary.to_dict(),
         "prompt": build_prompt(summary, question),
+        "input": normalized_input.to_dict(),
     }
+
+
+def build_analysis_payload(csv_path: str | Path, question: str) -> dict[str, Any]:
+    path = Path(csv_path)
+    if not path.exists():
+        raise FileNotFoundError(f"CSV file not found: {path}")
+
+    payload = {
+        "input_type": "csv",
+        "source_name": path.name,
+        "normalized_csv_text": path.read_text(encoding="utf-8"),
+        "meta": {"csv_path": str(path)},
+    }
+    return build_analysis_payload_from_request(payload, question, csv_path_override=str(path))
+
+
+def build_analysis_payload_from_csv_text(csv_text: str, question: str) -> dict[str, Any]:
+    return build_analysis_payload_from_request({"csv_text": csv_text}, question)

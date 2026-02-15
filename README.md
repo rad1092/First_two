@@ -240,6 +240,74 @@ bitnet-analyze multi-analyze a.csv b.csv --question "비교" --no-cache --out-js
 
 ---
 
+## API 입력 계약 요약 (`/api/analyze`)
+
+웹 API는 확장 가능한 공통 입력 스키마를 사용합니다.
+
+### 요청 필드
+
+- `input_type`: `csv` | `excel` | `document`
+- `source_name`: 원본 이름(파일명/시트명 등)
+- `normalized_csv_text`: 전처리 완료된 CSV 텍스트
+- `meta`: 입력별 부가 메타데이터(dict)
+- `question`: 분석 질문
+
+하위호환: 기존 `csv_text`만 보내도 내부에서 `normalized_csv_text`로 승격되어 처리됩니다.
+
+### 요청 예시 (신규)
+
+```json
+{
+  "input_type": "excel",
+  "source_name": "sales.xlsx#Sheet1",
+  "normalized_csv_text": "region,amount\nseoul,100\nbusan,120\n",
+  "meta": {
+    "sheet": "Sheet1",
+    "uploaded_by": "analyst"
+  },
+  "question": "지역별 매출을 요약해줘"
+}
+```
+
+### 요청 예시 (레거시 CSV)
+
+```json
+{
+  "csv_text": "region,amount\nseoul,100\n",
+  "question": "핵심 인사이트를 알려줘"
+}
+```
+
+### 정상 응답 예시 (일부)
+
+```json
+{
+  "csv_path": "sales.xlsx#Sheet1",
+  "question": "지역별 매출을 요약해줘",
+  "summary": {"row_count": 2, "column_count": 2},
+  "input": {
+    "input_type": "excel",
+    "source_name": "sales.xlsx#Sheet1",
+    "normalized_csv_text": "region,amount\nseoul,100\nbusan,120\n",
+    "meta": {"sheet": "Sheet1", "uploaded_by": "analyst"},
+    "preprocessing_steps": ["use_normalized_csv_text"]
+  }
+}
+```
+
+### 오류 응답 예시
+
+```json
+{
+  "error": "analyze payload invalid",
+  "error_detail": "normalized_csv_text is required",
+  "input_type": "document",
+  "preprocessing_stage": "input_validation"
+}
+```
+
+---
+
 ## 8) GitHub 반영(적용) 절차
 
 로컬에서 문서/설정을 수정한 뒤 아래 순서로 GitHub에 반영합니다.
