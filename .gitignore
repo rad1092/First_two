@@ -7,3 +7,5 @@ __pycache__/
 .bitnet_cache/
 
 .offline_bundle/
+
+.online_assets/
