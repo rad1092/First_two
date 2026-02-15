@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from .analysis import DataSummary, build_analysis_payload, build_analysis_payload_from_request, build_markdown_report
+from .compare import compare_csv_files, result_to_json as compare_result_to_json
 from .doctor import collect_environment
 from .document_extract import extract_document_tables, table_to_analysis_request
 from .multi_csv import analyze_multiple_csv, build_multi_csv_markdown, result_to_json
@@ -94,6 +95,11 @@ def _build_parser() -> argparse.ArgumentParser:
     multi_parser.add_argument("--no-cache", action="store_true", help="Disable file profile cache")
     multi_parser.add_argument("--workers", type=int, default=None, help="Optional worker count for parallel file profiling")
 
+    compare_parser = subparsers.add_parser("compare", help="Compare before/after CSV distributions")
+    compare_parser.add_argument("--before", required=True, type=Path, help="Before CSV path")
+    compare_parser.add_argument("--after", required=True, type=Path, help="After CSV path")
+    compare_parser.add_argument("--out", type=Path, default=Path("compare_result.json"), help="Where to store compare result JSON")
+
     report_parser = subparsers.add_parser("report", help="Build markdown summary report from CSV")
     report_parser.add_argument("csv", type=Path, help="Input CSV path")
     report_parser.add_argument("--question", required=True, help="Analysis question")
@@ -109,7 +115,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     raw_args = list(sys.argv[1:] if argv is None else argv)
-    if raw_args and raw_args[0] not in {"analyze", "ui", "desktop", "doctor", "report", "multi-analyze", "-h", "--help"}:
+    if raw_args and raw_args[0] not in {"analyze", "ui", "desktop", "doctor", "report", "multi-analyze", "compare", "-h", "--help"}:
         raw_args.insert(0, "analyze")
 
     parser = _build_parser()
@@ -151,6 +157,12 @@ def main(argv: list[str] | None = None) -> int:
         args.out_report.write_text(build_multi_csv_markdown(result), encoding="utf-8")
         print(f"multi analysis json saved: {args.out_json}")
         print(f"multi analysis report saved: {args.out_report}")
+        return 0
+
+    if args.command == "compare":
+        result = compare_csv_files(args.before, args.after)
+        args.out.write_text(compare_result_to_json(result), encoding="utf-8")
+        print(f"compare result saved: {args.out}")
         return 0
 
     if args.command == "report":
