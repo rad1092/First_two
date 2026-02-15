@@ -1,0 +1,14 @@
+{
+  "concepts": [
+    {
+      "canonical": "시군구",
+      "aliases": ["구군", "지역구"],
+      "column_aliases": ["sigungu_col", "sigungu", "시군구명", "구군명"]
+    },
+    {
+      "canonical": "세차유형",
+      "aliases": ["서비스타입"],
+      "column_aliases": ["service_type_col", "service_type", "세차유형코드", "서비스타입"]
+    }
+  ]
+}

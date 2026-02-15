@@ -12,6 +12,7 @@ const UI = {
   quickAnalyzeBtn: document.getElementById('quickAnalyzeBtn'),
   runBtn: document.getElementById('runBtn'),
   summary: document.getElementById('summary'),
+  schemaMappings: document.getElementById('schemaMappings'),
   prompt: document.getElementById('prompt'),
   answer: document.getElementById('answer'),
   analyzeAssist: document.getElementById('analyzeAssist'),
@@ -215,6 +216,22 @@ async function buildMultiPayloadFiles(files) {
     }
   }
   return payloadFiles;
+}
+
+
+function renderSchemaMappings(data) {
+  if (!UI.schemaMappings) return;
+  const mappings = Array.isArray(data?.schema_semantics_mappings) ? data.schema_semantics_mappings : [];
+  if (!mappings.length) {
+    UI.schemaMappings.textContent = '자동 매핑 결과가 없습니다.';
+    return;
+  }
+  const lines = mappings.map((m) => {
+    if (m.status === 'success') return `${m.user_term} → ${m.matched_column}`;
+    if (m.status === 'ambiguous') return `${m.user_term} → 후보: ${(m.candidates || []).join(', ')}`;
+    return `${m.user_term} → 매핑 실패`;
+  });
+  UI.schemaMappings.textContent = lines.join('\n');
 }
 
 function setStatus(message) {
@@ -677,6 +694,7 @@ async function runAnalyzeFromPreprocessed(result, fallbackQuestion = '') {
   const data = await postJson('/api/analyze', body, '분석');
   appState.latestPrompt = data.prompt;
   UI.summary.textContent = JSON.stringify(data.summary, null, 2);
+  renderSchemaMappings(data);
   renderAnalyzeAssist(data);
   if (UI.prompt) UI.prompt.textContent = data.prompt;
   if (UI.answer) UI.answer.textContent = '';
@@ -833,6 +851,7 @@ async function runAnalyze() {
   resetAnalyzeAssist();
   setStatus(STATUS.analyzing);
   UI.summary.textContent = STATUS.analyzing;
+  if (UI.schemaMappings) UI.schemaMappings.textContent = '자동 매핑 결과를 계산 중입니다...';
   toggleBusy(true);
   try {
     const body = await buildAnalyzeRequest();
