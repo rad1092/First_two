@@ -14,6 +14,13 @@ const UI = {
   summary: document.getElementById('summary'),
   prompt: document.getElementById('prompt'),
   answer: document.getElementById('answer'),
+  analyzeAssist: document.getElementById('analyzeAssist'),
+  confidenceBadge: document.getElementById('confidenceBadge'),
+  switchToCsvBtn: document.getElementById('switchToCsvBtn'),
+  analyzeRecommendation: document.getElementById('analyzeRecommendation'),
+  candidateTableWrap: document.getElementById('candidateTableWrap'),
+  candidateTableSelect: document.getElementById('candidateTableSelect'),
+  candidateTablePreview: document.getElementById('candidateTablePreview'),
   statusBox: document.getElementById('statusBox'),
   modeGuide: document.getElementById('modeGuide'),
   errorUser: document.getElementById('errorUser'),
@@ -68,7 +75,11 @@ const appState = {
   chartJob: { id: null, files: [], status: 'idle', pollTimer: null },
   uploadedFile: null,
   detectedInputType: 'csv',
+  candidateTables: [],
 };
+
+const CONFIDENCE_THRESHOLD_DEFAULT = 0.7;
+const CANDIDATE_PREVIEW_ROWS = 5;
 
 
 function getInputTypeForFile(file) {
@@ -180,6 +191,118 @@ function clearError() {
   showError('', '');
 }
 
+function resetAnalyzeAssist() {
+  appState.candidateTables = [];
+  if (UI.analyzeAssist) UI.analyzeAssist.hidden = true;
+  if (UI.confidenceBadge) UI.confidenceBadge.hidden = true;
+  if (UI.switchToCsvBtn) UI.switchToCsvBtn.hidden = true;
+  if (UI.analyzeRecommendation) UI.analyzeRecommendation.textContent = '';
+  if (UI.candidateTableWrap) UI.candidateTableWrap.hidden = true;
+  if (UI.candidateTableSelect) UI.candidateTableSelect.innerHTML = '';
+  if (UI.candidateTablePreview) UI.candidateTablePreview.textContent = `후보 테이블 미리보기(상위 ${CANDIDATE_PREVIEW_ROWS}행)`;
+}
+
+function toNumberOrNull(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function extractAnalyzeSignals(data) {
+  const extraction = data?.extraction || data?.summary?.extraction || data?.input?.meta?.extraction || {};
+  const confidence = toNumberOrNull(data?.confidence ?? extraction?.confidence ?? data?.summary?.confidence);
+  const threshold = toNumberOrNull(data?.confidence_threshold ?? extraction?.confidence_threshold)
+    ?? CONFIDENCE_THRESHOLD_DEFAULT;
+  const candidateTables = Array.isArray(data?.candidate_tables)
+    ? data.candidate_tables
+    : Array.isArray(extraction?.candidate_tables)
+      ? extraction.candidate_tables
+      : Array.isArray(data?.summary?.candidate_tables)
+        ? data.summary.candidate_tables
+        : [];
+  const extractionStatus = String(extraction?.status || data?.extraction_status || '').toLowerCase();
+  const extractionFailed = Boolean(extraction?.failed)
+    || extractionStatus === 'failed'
+    || extractionStatus === 'error'
+    || Boolean(data?.document_extraction_failed);
+  const lowConfidence = confidence !== null && confidence <= threshold;
+  const detail = String(data?.error_detail || extraction?.error_detail || '').trim();
+  return { extractionFailed, lowConfidence, confidence, threshold, candidateTables, detail };
+}
+
+function getCandidateTableRows(table) {
+  if (!table || typeof table !== 'object') return [];
+  if (Array.isArray(table.preview_rows)) return table.preview_rows;
+  if (Array.isArray(table.rows)) return table.rows;
+  if (Array.isArray(table.sample_rows)) return table.sample_rows;
+  return [];
+}
+
+function renderCandidateTablePreview(index) {
+  if (!UI.candidateTablePreview) return;
+  const table = appState.candidateTables[index];
+  if (!table) {
+    UI.candidateTablePreview.textContent = '후보 테이블이 없습니다.';
+    return;
+  }
+  const rows = getCandidateTableRows(table).slice(0, CANDIDATE_PREVIEW_ROWS);
+  const lines = [`${table.label || `후보 ${index + 1}`} 미리보기(상위 ${CANDIDATE_PREVIEW_ROWS}행)`];
+  if (!rows.length) {
+    lines.push('미리보기 행 데이터가 없습니다.');
+  } else {
+    rows.forEach((row, i) => {
+      lines.push(`${i + 1}. ${JSON.stringify(row, null, 0)}`);
+    });
+  }
+  UI.candidateTablePreview.textContent = lines.join('\n');
+}
+
+function renderCandidateTableSelection(candidateTables) {
+  if (!UI.candidateTableWrap || !UI.candidateTableSelect) return;
+  appState.candidateTables = candidateTables;
+  if (candidateTables.length <= 1) {
+    UI.candidateTableWrap.hidden = true;
+    return;
+  }
+  UI.candidateTableWrap.hidden = false;
+  UI.candidateTableSelect.innerHTML = candidateTables.map((table, idx) => {
+    const label = table?.label || table?.name || `후보 ${idx + 1}`;
+    const score = toNumberOrNull(table?.confidence ?? table?.score);
+    const suffix = score === null ? '' : ` (신뢰도 ${score.toFixed(2)})`;
+    return `<option value="${idx}">${label}${suffix}</option>`;
+  }).join('');
+  renderCandidateTablePreview(0);
+}
+
+function renderAnalyzeAssist(data) {
+  const signals = extractAnalyzeSignals(data);
+  const shouldShow = signals.extractionFailed || signals.lowConfidence || signals.candidateTables.length > 1;
+  if (!UI.analyzeAssist) return;
+  UI.analyzeAssist.hidden = !shouldShow;
+  if (!shouldShow) return;
+
+  if (UI.switchToCsvBtn) UI.switchToCsvBtn.hidden = !(signals.extractionFailed || signals.lowConfidence);
+  if (UI.confidenceBadge) {
+    UI.confidenceBadge.hidden = !signals.lowConfidence;
+    if (signals.lowConfidence) {
+      UI.confidenceBadge.textContent = `신뢰도 낮음 ${signals.confidence?.toFixed(2)}/${signals.threshold.toFixed(2)}`;
+    }
+  }
+  if (UI.analyzeRecommendation) {
+    if (signals.extractionFailed) {
+      UI.analyzeRecommendation.textContent = '문서 추출에 실패했습니다. CSV 업로드로 전환 후 다시 분석하세요.';
+    } else if (signals.lowConfidence) {
+      UI.analyzeRecommendation.textContent = '신뢰도가 낮습니다. 수동 확인 후 분석을 진행하는 것을 권장합니다.';
+    } else {
+      UI.analyzeRecommendation.textContent = '여러 후보 테이블이 감지되었습니다. 미리보기를 확인하고 적절한 후보를 선택하세요.';
+    }
+  }
+  renderCandidateTableSelection(signals.candidateTables);
+
+  if (signals.detail) {
+    showError('문서 추출 품질을 확인하세요.', signals.detail);
+  }
+}
+
 function toggleBusy(isBusy) {
   appState.busyCount += isBusy ? 1 : -1;
   if (appState.busyCount < 0) appState.busyCount = 0;
@@ -193,6 +316,8 @@ function toggleBusy(isBusy) {
     UI.renderDashboardBtn,
     UI.startChartsJobBtn,
     UI.retryChartsJobBtn,
+    UI.switchToCsvBtn,
+    UI.candidateTableSelect,
     ...document.querySelectorAll('.mode-btn'),
     ...document.querySelectorAll('.chip'),
   ];
@@ -582,6 +707,7 @@ async function retryChartsJob() {
 
 async function runAnalyze() {
   clearError();
+  resetAnalyzeAssist();
   setStatus(STATUS.analyzing);
   UI.summary.textContent = STATUS.analyzing;
   toggleBusy(true);
@@ -590,6 +716,7 @@ async function runAnalyze() {
     const data = await postJson('/api/analyze', body, '분석');
     appState.latestPrompt = data.prompt;
     UI.summary.textContent = JSON.stringify(data.summary, null, 2);
+    renderAnalyzeAssist(data);
     if (UI.prompt) UI.prompt.textContent = data.prompt;
     if (UI.answer) UI.answer.textContent = '';
     setStatus(STATUS.analyzeDone);
@@ -794,6 +921,18 @@ function bindEvents() {
     el?.addEventListener('change', renderInsightList);
   });
   UI.filterColumn?.addEventListener('input', renderInsightList);
+
+  UI.switchToCsvBtn?.addEventListener('click', () => {
+    setMode('quick');
+    if (UI.inputType) UI.inputType.value = 'csv';
+    UI.csvFile?.focus();
+    setStatus('CSV 업로드로 전환되었습니다. CSV 파일을 선택한 뒤 다시 분석하세요.');
+  });
+
+  UI.candidateTableSelect?.addEventListener('change', (e) => {
+    const idx = Number(e.target.value || 0);
+    renderCandidateTablePreview(Number.isFinite(idx) ? idx : 0);
+  });
 
   UI.intent?.addEventListener('input', () => {
     if (!UI.intent.value.trim()) {

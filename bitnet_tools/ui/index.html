@@ -80,6 +80,18 @@
 
       <section class="panel">
         <h2>4) 결과</h2>
+        <div id="analyzeAssist" class="analyze-assist" aria-live="polite" hidden>
+          <div class="actions">
+            <span id="confidenceBadge" class="chip" hidden>신뢰도 낮음</span>
+            <button id="switchToCsvBtn" type="button" hidden>CSV 업로드로 전환</button>
+          </div>
+          <p id="analyzeRecommendation" class="sub"></p>
+          <div id="candidateTableWrap" hidden>
+            <label for="candidateTableSelect">추출 후보 테이블 선택</label>
+            <select id="candidateTableSelect"></select>
+            <pre id="candidateTablePreview">후보 테이블 미리보기(상위 5행)</pre>
+          </div>
+        </div>
         <h3>데이터 요약</h3>
         <pre id="summary"></pre>
       </section>
