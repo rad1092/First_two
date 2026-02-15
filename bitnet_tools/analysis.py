@@ -32,10 +32,31 @@ def _to_float(value: str) -> float | None:
     v = value.strip()
     if not v:
         return None
+
+    negative_by_parentheses = v.startswith("(") and v.endswith(")")
+    if negative_by_parentheses:
+        v = v[1:-1].strip()
+
+    # normalize frequent human-entered numeric formats
+    v = (
+        v.replace(",", "")
+        .replace("₩", "")
+        .replace("$", "")
+        .replace("€", "")
+        .replace("£", "")
+        .replace("%", "")
+        .strip()
+    )
+
+    if not v:
+        return None
+
     try:
-        return float(v)
+        parsed = float(v)
     except ValueError:
         return None
+
+    return -parsed if negative_by_parentheses else parsed
 
 
 def summarize_rows(rows: list[dict[str, str]], columns: list[str]) -> DataSummary:

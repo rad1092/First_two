@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from bitnet_tools.analysis import (
     build_analysis_payload,
     build_analysis_payload_from_csv_text,
@@ -152,3 +154,32 @@ def test_multi_csv_with_parallel_workers(tmp_path):
 
     assert result["file_count"] == 2
     assert [f["path"] for f in result["files"]] == [str(p1), str(p2)]
+
+
+def test_to_float_normalizes_currency_comma_percent_parentheses():
+    from bitnet_tools.analysis import _to_float
+
+    assert _to_float("1,234.5") == 1234.5
+    assert _to_float("₩4,500") == 4500.0
+    assert _to_float("$3,000") == 3000.0
+    assert _to_float("12.5%") == 12.5
+    assert _to_float("(99.1)") == -99.1
+
+
+def test_baseline_fixture_summaries_are_stable(tmp_path):
+    from bitnet_tools.analysis import build_analysis_payload
+
+    root = Path(__file__).parent / "fixtures"
+
+    small = build_analysis_payload(root / "small_numeric.csv", "baseline")
+    assert small["summary"]["row_count"] == 3
+    assert small["summary"]["column_count"] == 3
+    assert small["summary"]["dtypes"]["amount"] == "float"
+
+    mixed = build_analysis_payload(root / "mixed_formats.csv", "baseline")
+    assert mixed["summary"]["dtypes"]["price"] == "float"
+    assert mixed["summary"]["dtypes"]["discount"] == "float"
+    assert mixed["summary"]["missing_counts"]["discount"] == 1
+
+    missing = build_analysis_payload(root / "missing_heavy.csv", "baseline")
+    assert missing["summary"]["missing_counts"] == {"a": 2, "b": 2, "c": 1}
