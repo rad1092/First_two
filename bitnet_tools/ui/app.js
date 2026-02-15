@@ -45,6 +45,7 @@ const UI = {
   filterColumn: document.getElementById('filterColumn'),
   filterType: document.getElementById('filterType'),
   insightList: document.getElementById('insightList'),
+  reasonCandidates: document.getElementById('reasonCandidates'),
   insightDrilldown: document.getElementById('insightDrilldown'),
   geoLatCol: document.getElementById('geoLatCol'),
   geoLonCol: document.getElementById('geoLonCol'),
@@ -660,6 +661,13 @@ function renderDashboard(data) {
   UI.dashboardInsights.textContent = insights.length
     ? insights.map((x, i) => `${i + 1}. ${x}`).join('\n')
     : '인사이트 항목이 없습니다.';
+
+  const reasons = Array.isArray(data.reason_candidates) ? data.reason_candidates : [];
+  if (UI.reasonCandidates) {
+    UI.reasonCandidates.textContent = reasons.length
+      ? reasons.map((x, i) => `${i + 1}. [${x.rule}] score=${x.score}\n- 파일: ${x.file}\n- 근거: ${x.reason}`).join('\n\n')
+      : '이유 후보가 없습니다.';
+  }
 
   appState.structuredInsights = buildStructuredInsights(data);
   renderFilters();

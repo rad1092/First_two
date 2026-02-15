@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from .analysis import _to_float
+from .explain import generate_reason_candidates
 
 CACHE_DIR = Path('.bitnet_cache')
 UNIQUE_BITMAP_SIZE = 65536
@@ -340,6 +341,9 @@ def _generate_insights(files: list[dict[str, Any]], schema_drift: dict[str, Any]
             insights.append(f"공통 컬럼 {col}의 타입이 파일 간 다르게 탐지됨")
         if drift['mean_range'] > 0:
             insights.append(f"공통 컬럼 {col}의 평균 범위 변화: {drift['mean_range']:.4f}")
+    for f in files:
+        for reason in f.get('reason_candidates', [])[:3]:
+            insights.append(f"{f['path']} 이유후보[{reason['rule']}] {reason['reason']}")
     return insights[:30]
 
 
@@ -402,12 +406,22 @@ def analyze_multiple_csv(
                 'summary': profiled['summary'],
                 'column_profiles': profiled['column_profiles'],
                 'group_target_ratio': profiled['group_target_ratio'],
+                'reason_candidates': generate_reason_candidates(
+                    str(path),
+                    path,
+                    profiled['column_profiles'],
+                ),
             }
         )
 
     shared_columns = sorted(set.intersection(*all_columns)) if all_columns else []
     union_columns = sorted(set.union(*all_columns)) if all_columns else []
     schema_drift = _schema_drift(files, shared_columns)
+    all_reason_candidates: list[dict[str, Any]] = []
+    for f in files:
+        for reason in f.get('reason_candidates', []):
+            all_reason_candidates.append({'file': f['path'], **reason})
+    all_reason_candidates.sort(key=lambda x: x.get('score', 0.0), reverse=True)
 
     return {
         'question': question,
@@ -418,6 +432,7 @@ def analyze_multiple_csv(
         'files': files,
         'schema_drift': schema_drift,
         'insights': _generate_insights(files, schema_drift),
+        'reason_candidates': all_reason_candidates[:3],
         'code_guidance': build_code_guidance(shared_columns, group_column, target_column),
     }
 
