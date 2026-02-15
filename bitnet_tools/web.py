@@ -21,6 +21,7 @@ import zipfile
 from urllib.parse import urlparse
 
 from .analysis import build_analysis_payload_from_request
+from .compare import compare_csv_texts
 from .document_extract import extract_document_tables_from_base64, table_to_analysis_request
 from .multi_csv import analyze_multiple_csv
 from .planner import build_plan, execute_plan_from_csv_text, parse_question_to_intent
@@ -487,6 +488,22 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send_json(self._error_payload('document file is required', 'file_base64 is empty', input_type='document', preprocessing_stage='input_validation'), HTTPStatus.BAD_REQUEST)
                 result = extract_document_tables_from_base64(file_base64, source_name)
                 return self._send_json(result.to_dict())
+
+            if route == '/api/compare':
+                before_payload = payload.get('before', {})
+                after_payload = payload.get('after', {})
+                if not isinstance(before_payload, dict) or not isinstance(after_payload, dict):
+                    return self._send_json(self._error_payload('before and after payloads are required'), HTTPStatus.BAD_REQUEST)
+
+                before_name, before_text, _ = _coerce_csv_text_from_file_payload(before_payload)
+                after_name, after_text, _ = _coerce_csv_text_from_file_payload(after_payload)
+                result = compare_csv_texts(
+                    before_text,
+                    after_text,
+                    before_source=before_name,
+                    after_source=after_name,
+                )
+                return self._send_json(result)
 
             if route == "/api/analyze":
                 question = str(payload.get("question", "")).strip()
