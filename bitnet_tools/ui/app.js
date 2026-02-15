@@ -1,5 +1,8 @@
 const UI = {
   csvFile: document.getElementById('csvFile'),
+  inputType: document.getElementById('inputType'),
+  sheetSelect: document.getElementById('sheetSelect'),
+  refreshSheetsBtn: document.getElementById('refreshSheetsBtn'),
   csvText: document.getElementById('csvText'),
   question: document.getElementById('question'),
   intent: document.getElementById('intent'),
@@ -51,7 +54,7 @@ const USER_ERROR = {
   noPrompt: '먼저 분석을 실행해 프롬프트를 생성하세요.',
   noModel: '모델 태그를 입력하세요. 예: bitnet:latest',
   invalidDashboardJson: '대시보드 JSON 형식이 올바르지 않습니다.',
-  noMultiFiles: '멀티 CSV 파일을 먼저 선택하세요.',
+  noMultiFiles: '멀티 파일을 먼저 선택하세요.',
   unknownIntent: '의도 해석이 불명확합니다. 아래 추천 액션 중 하나를 선택하세요.',
 };
 
@@ -63,7 +66,103 @@ const appState = {
   latestMultiResult: null,
   structuredInsights: [],
   chartJob: { id: null, files: [], status: 'idle', pollTimer: null },
+  uploadedFile: null,
+  detectedInputType: 'csv',
 };
+
+
+function getInputTypeForFile(file) {
+  const selected = UI.inputType?.value || 'auto';
+  if (selected !== 'auto') return selected;
+  const name = String(file?.name || '').toLowerCase();
+  if (name.endsWith('.xlsx') || name.endsWith('.xls')) return 'excel';
+  return 'csv';
+}
+
+async function readFileAsBase64(file) {
+  const buf = await file.arrayBuffer();
+  let binary = '';
+  const bytes = new Uint8Array(buf);
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+async function fetchSheetsForFile(file) {
+  const inputType = getInputTypeForFile(file);
+  if (inputType !== 'excel') {
+    appState.detectedInputType = 'csv';
+    if (UI.sheetSelect) UI.sheetSelect.innerHTML = '<option value="">CSV는 시트 선택이 필요 없습니다.</option>';
+    return;
+  }
+  const fileBase64 = await readFileAsBase64(file);
+  const res = await postJson('/api/sheets', {
+    input_type: 'excel',
+    source_name: file.name,
+    file_base64: fileBase64,
+  }, 'Excel 시트 목록 조회');
+  appState.detectedInputType = 'excel';
+  const names = Array.isArray(res.sheet_names) ? res.sheet_names : [];
+  const opts = ['<option value="">기본 시트(첫 번째)</option>', ...names.map((n) => `<option value="${n}">${n}</option>`)].join('');
+  if (UI.sheetSelect) UI.sheetSelect.innerHTML = opts;
+}
+
+async function buildAnalyzeRequest() {
+  const file = UI.csvFile?.files?.[0] || null;
+  const question = UI.question.value;
+  const inputType = file ? getInputTypeForFile(file) : 'csv';
+
+  if (!file) {
+    return {
+      input_type: 'csv',
+      source_name: '<inline_csv>',
+      normalized_csv_text: UI.csvText.value,
+      question,
+    };
+  }
+
+  if (inputType === 'excel') {
+    const base64 = await readFileAsBase64(file);
+    return {
+      input_type: 'excel',
+      source_name: file.name,
+      file_base64: base64,
+      sheet_name: UI.sheetSelect?.value || '',
+      question,
+    };
+  }
+
+  return {
+    input_type: 'csv',
+    source_name: file.name,
+    normalized_csv_text: await file.text(),
+    question,
+  };
+}
+
+async function buildMultiPayloadFiles(files) {
+  const payloadFiles = [];
+  for (const f of files) {
+    const inputType = getInputTypeForFile(f);
+    if (inputType === 'excel') {
+      payloadFiles.push({
+        name: f.name,
+        input_type: 'excel',
+        file_base64: await readFileAsBase64(f),
+        sheet_name: UI.sheetSelect?.value || '',
+      });
+    } else {
+      payloadFiles.push({
+        name: f.name,
+        input_type: 'csv',
+        normalized_csv_text: await f.text(),
+      });
+    }
+  }
+  return payloadFiles;
+}
 
 function setStatus(message) {
   if (UI.statusBox) UI.statusBox.textContent = message;
@@ -438,10 +537,7 @@ async function startChartsJob() {
 
   toggleBusy(true);
   try {
-    const payloadFiles = [];
-    for (const f of files) {
-      payloadFiles.push({ name: f.name, csv_text: await f.text() });
-    }
+    const payloadFiles = await buildMultiPayloadFiles(files);
     appState.chartJob.files = payloadFiles;
 
     const queued = await postJson('/api/charts/jobs', { files: payloadFiles }, '차트 작업 생성');
@@ -490,10 +586,8 @@ async function runAnalyze() {
   UI.summary.textContent = STATUS.analyzing;
   toggleBusy(true);
   try {
-    const data = await postJson('/api/analyze', {
-      csv_text: UI.csvText.value,
-      question: UI.question.value,
-    }, '분석');
+    const body = await buildAnalyzeRequest();
+    const data = await postJson('/api/analyze', body, '분석');
     appState.latestPrompt = data.prompt;
     UI.summary.textContent = JSON.stringify(data.summary, null, 2);
     if (UI.prompt) UI.prompt.textContent = data.prompt;
@@ -522,11 +616,7 @@ async function runMultiAnalyze() {
   UI.dashboardInsights.textContent = STATUS.multiRunning;
   toggleBusy(true);
   try {
-    const payloadFiles = [];
-    for (const f of files) {
-      payloadFiles.push({ name: f.name, csv_text: await f.text() });
-    }
-  });
+    const payloadFiles = await buildMultiPayloadFiles(files);
 
     const data = await postJson('/api/multi-analyze', {
       files: payloadFiles,
@@ -630,7 +720,13 @@ function bindEvents() {
     UI.csvFile.addEventListener('change', async (e) => {
       const file = e.target.files?.[0];
       if (!file) return;
-      UI.csvText.value = await file.text();
+      appState.uploadedFile = file;
+      await fetchSheetsForFile(file);
+      if (getInputTypeForFile(file) === 'csv') {
+        UI.csvText.value = await file.text();
+      } else {
+        UI.csvText.value = '';
+      }
       setStatus(`파일 로드 완료: ${file.name}`);
     });
   }
@@ -640,6 +736,32 @@ function bindEvents() {
       UI.question.value = chip.dataset.q;
       UI.quickAnalyzeBtn?.focus();
     });
+  });
+
+
+  UI.refreshSheetsBtn?.addEventListener('click', async () => {
+    if (!UI.csvFile?.files?.[0]) {
+      showError('파일을 먼저 선택하세요.', 'csvFile is empty');
+      return;
+    }
+    clearError();
+    try {
+      await fetchSheetsForFile(UI.csvFile.files[0]);
+      setStatus('시트 목록을 새로고침했습니다.');
+    } catch (err) {
+      showError(err.userMessage || '시트 목록 조회 실패', err.detail || '');
+      setStatus('시트 목록 조회 실패');
+    }
+  });
+
+  UI.inputType?.addEventListener('change', async () => {
+    if (!UI.csvFile?.files?.[0]) return;
+    clearError();
+    try {
+      await fetchSheetsForFile(UI.csvFile.files[0]);
+    } catch (err) {
+      showError(err.userMessage || '입력 타입 전환 실패', err.detail || '');
+    }
   });
 
   UI.copyPromptBtn?.addEventListener('click', async () => {
