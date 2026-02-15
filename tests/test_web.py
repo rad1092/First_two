@@ -343,3 +343,18 @@ def test_geo_suspects_api_validates_lat_lon_columns():
     finally:
         server.shutdown()
         thread.join(timeout=1)
+
+def test_viz_recommend_api_returns_reason_and_chart_types():
+    server, thread = _run_server()
+    base = f'http://127.0.0.1:{server.server_port}'
+    try:
+        code, body = _post_json(base + '/api/viz/recommend', {
+            'question': '월별 변화 추이를 보고 싶어',
+        })
+        assert code == 200
+        assert body['intent'] == 'trend'
+        assert 'line' in body['recommended_chart_types']
+        assert body['reason']
+    finally:
+        server.shutdown()
+        thread.join(timeout=2)

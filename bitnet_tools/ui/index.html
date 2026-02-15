@@ -49,6 +49,10 @@
           <button class="chip" data-q="실행 가능한 다음 액션 5개를 우선순위로 제안해줘">다음행동</button>
         </div>
         <textarea id="question" rows="3">핵심 인사이트 3개와 근거를 알려줘</textarea>
+        <div class="actions">
+          <button id="showVizOptionsBtn" type="button">시각화 옵션 보기</button>
+        </div>
+        <pre id="vizRecommendation" aria-live="polite">추천 시각화 옵션이 여기에 표시됩니다.</pre>
 
         <label>작업 요청(intent)</label>
         <textarea id="intent" rows="2" placeholder="예: 파일 먼저 분석하고 이상치만 보여줘"></textarea>
